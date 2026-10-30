@@ -1,0 +1,5 @@
+[[dependencies]]
+name = "solady"
+version = "0.1.9"
+git = "https://github.com/Vectorized/solady.git"
+rev = "1eb89b9af0a09468c6ccff51ce8ed5eb520b4fb5"

@@ -12,3 +12,9 @@ docs/
 
 # Dotenv file
 .env
+
+# Soldeer dependencies
+dependencies/
+
+# Superpowers workspaces (git-ignored by design)
+.superpowers/

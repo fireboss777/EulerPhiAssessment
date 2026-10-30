@@ -1,6 +1,9 @@
 [profile.default]
 src = "src"
 out = "out"
-libs = ["lib"]
+libs = ["lib", "dependencies"]
+
+[dependencies]
+solady = { version = "0.1.9", git = "https://github.com/Vectorized/solady.git", tag = "v0.1.9" }
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
