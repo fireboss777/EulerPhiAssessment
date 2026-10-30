@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {Script} from "forge-std/Script.sol";
+import {console} from "forge-std/console.sol";
 import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
 import {ArticleAnchor} from "../src/ArticleAnchor.sol";
 
@@ -26,5 +27,6 @@ contract DeployHub is Script {
             abi.encodeCall(ArticleAnchor.initialize, (admin, router, selector))
         );
         vm.stopBroadcast();
+        console.log("HUB_PROXY", proxy);
     }
 }
