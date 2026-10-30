@@ -1,2 +1,2 @@
-solady-0.1.9/=dependencies/solady-0.1.9/
-solady/=dependencies/solady-0.1.9/src/
+solady-0.1.26/=dependencies/solady-0.1.26/
+solady/=dependencies/solady-0.1.26/src/

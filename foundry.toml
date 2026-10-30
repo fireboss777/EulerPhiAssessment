@@ -4,6 +4,6 @@ out = "out"
 libs = ["lib", "dependencies"]
 
 [dependencies]
-solady = { version = "0.1.9", git = "https://github.com/Vectorized/solady.git", tag = "v0.1.9" }
+solady = { version = "0.1.26", git = "https://github.com/Vectorized/solady.git", tag = "v0.1.26" }
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

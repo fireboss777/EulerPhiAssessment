@@ -1,5 +1,5 @@
 [[dependencies]]
 name = "solady"
-version = "0.1.9"
+version = "0.1.26"
 git = "https://github.com/Vectorized/solady.git"
-rev = "1eb89b9af0a09468c6ccff51ce8ed5eb520b4fb5"
+rev = "acd959aa4bd04720d640bf4e6a5c71037510cc4b"
