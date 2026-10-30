@@ -1,24 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ArticleAnchor} from "../src/ArticleAnchor.sol";
 import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
 import {ArticleAnchorV2Stub} from "./mocks/ArticleAnchorV2Stub.sol";
 
 contract UpgradeTest is ArticleTestBase {
-    /// @dev Canonical deploy shape (mirrors script/DeployHub.s.sol):
-    /// impl behind an ERC1967 proxy whose recorded factory-admin is
-    /// address(0) — the factory's upgrade() path is permanently dead, so
-    /// `upgradeToAndCall` (gated by _authorizeUpgrade) is the ONLY way up.
+    /// @dev Canonical deploy shape (mirrors script/DeployHub.s.sol): an OZ
+    /// ERC1967 proxy — with NO admin/authority entry at all — running
+    /// `initialize` in its constructor, so `upgradeToAndCall` (gated by
+    /// `_authorizeUpgrade`) is the ONLY way up. Returns the implementation so
+    /// tests can assert what the proxy's ERC-1967 slots point at.
     function _proxyHub(address admin_, address router_, uint64 chainSelector_)
         internal
-        returns (ArticleAnchor hub, ERC1967Factory factory)
+        returns (ArticleAnchor hub, ArticleAnchor impl)
     {
-        ArticleAnchor impl = new ArticleAnchor(address(0), address(0), 0, address(0));
-        factory = new ERC1967Factory();
-        address proxy = factory.deployAndCall(
-            address(impl), address(0), abi.encodeCall(ArticleAnchor.initialize, (admin_, router_, chainSelector_))
+        impl = new ArticleAnchor(address(0), address(0), 0, address(0));
+        address proxy = address(
+            new ERC1967Proxy(address(impl), abi.encodeCall(ArticleAnchor.initialize, (admin_, router_, chainSelector_)))
         );
         hub = ArticleAnchor(proxy);
     }
@@ -50,16 +51,6 @@ contract UpgradeTest is ArticleTestBase {
         assertEq(ArticleAnchorV2Stub(address(hub)).v2Ping(), 42, "new implementation logic live");
     }
 
-    function test_factoryAdminDisabled() public {
-        (ArticleAnchor hub, ERC1967Factory factory) = _proxyHub(address(this), address(0), 8453);
-        ArticleAnchor otherImpl = new ArticleAnchor(address(0), address(0), 0, address(0));
-
-        // Recorded factory-admin is address(0): no EOA can ever be caller() == 0.
-        vm.prank(address(0xF00));
-        vm.expectRevert(ERC1967Factory.Unauthorized.selector);
-        factory.upgrade(address(hub), address(otherImpl));
-    }
-
     function test_setGatewayOnlyAdmin() public {
         (ArticleAnchor hub,) = _proxyHub(address(this), address(0), 8453);
 
@@ -87,17 +78,61 @@ contract UpgradeTest is ArticleTestBase {
         impl.initialize(address(0xBAD), address(0), 8453);
     }
 
-    /// @dev A fresh proxy must refuse `admin_ = 0`: an admin-less hub would be
+    /// @dev A fresh hub must refuse `admin_ = 0`: an admin-less hub would be
     /// permanently un-upgradeable (nobody passes `msg.sender == admin`).
+    /// OZ's proxy forbids EMPTY init data (`ERC1967ProxyUninitialized`), so we
+    /// satisfy its guard with a harmless view call — that leaves the hub's own
+    /// `_initialized` flag untouched, i.e. the hub really is uninitialized.
     function test_initializeRejectsZeroAdmin() public {
         ArticleAnchor impl = new ArticleAnchor(address(0), address(0), 0, address(0));
-        ERC1967Factory factory = new ERC1967Factory();
-        ArticleAnchor fresh = ArticleAnchor(factory.deployAndCall(address(impl), address(0), ""));
+        ArticleAnchor fresh =
+            ArticleAnchor(address(new ERC1967Proxy(address(impl), abi.encodeWithSignature("journalLength()"))));
 
         vm.expectRevert("zero admin");
         fresh.initialize(address(0), address(0), 8453);
 
-        fresh.initialize(address(this), address(0), 8453); // still initializable
+        fresh.initialize(address(this), address(0), 8453); // failed attempt must not consume the flag
         assertEq(fresh.admin(), address(this), "legit init works");
+    }
+
+    /// @dev Deploy-time safety: a botched `initialize(admin_ = 0)` bubbles out
+    /// of the proxy CONSTRUCTOR, so no broken, un-upgradeable proxy is ever
+    /// left behind on chain.
+    function test_zeroAdminProxyCannotBeConstructed() public {
+        ArticleAnchor impl = new ArticleAnchor(address(0), address(0), 0, address(0));
+
+        vm.expectRevert("zero admin");
+        new ERC1967Proxy(address(impl), abi.encodeCall(ArticleAnchor.initialize, (address(0), address(0), 8453)));
+    }
+
+    /// @dev OZ's `onlyProxy`: `upgradeToAndCall` called on the BARE
+    /// implementation (no active proxy in front of it) must die. Pins OZ's
+    /// error selector — Solady's guard reverted with a different one, which is
+    /// exactly what makes this test RED before the library swap.
+    function test_bareImplementationUpgradeReverts() public {
+        ArticleAnchor impl = new ArticleAnchor(address(0), address(0), 0, address(0));
+        ArticleAnchor other = new ArticleAnchor(address(0), address(0), 0, address(0));
+
+        vm.expectRevert(UUPSUpgradeable.UUPSUnauthorizedCallContext.selector);
+        impl.upgradeToAndCall(address(other), "");
+    }
+
+    /// @dev The ERC-1967 ADMIN slot of the proxy must be empty: the proxy has
+    /// no admin/authority of its own (no factory key, no guardian), so the only
+    /// upgrade route is `upgradeToAndCall` gated by `_authorizeUpgrade`.
+    function test_proxyHasNoAdminSlot() public {
+        (ArticleAnchor hub, ArticleAnchor impl) = _proxyHub(address(this), address(0), 8453);
+        // ERC-1967 standard slots (see OpenZeppelin ERC1967Utils / EIP-1967).
+        bytes32 adminSlot = 0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103;
+        bytes32 implSlot = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
+
+        address recordedAdmin = address(uint160(uint256(vm.load(address(hub), adminSlot))));
+        assertEq(recordedAdmin, address(0), "proxy admin must not exist");
+        assertEq(
+            address(uint160(uint256(vm.load(address(hub), implSlot)))),
+            address(impl),
+            "impl slot must point at the implementation"
+        );
+        assertEq(hub.admin(), address(this), "app state lives behind the proxy");
     }
 }

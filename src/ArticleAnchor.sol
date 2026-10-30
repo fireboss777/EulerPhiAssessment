@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {EIP712} from "solady/utils/EIP712.sol";
-import {UUPSUpgradeable} from "solady/utils/UUPSUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {MerkleProofLib} from "solady/utils/MerkleProofLib.sol";
 import {MerkleTreeLib} from "solady/utils/MerkleTreeLib.sol";
 import {ECDSA} from "solady/utils/ECDSA.sol";

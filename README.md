@@ -32,7 +32,9 @@ Dependencies are **Soldeer-managed only** (no git submodules, no npm):
 
 | Dependency | Version | Why |
 |---|---|---|
-| [Solady](https://github.com/Vectorized/solady) | `v0.1.26` (git tag) | `EIP712`, `ECDSA`, `UUPSUpgradeable`, `ERC1967Factory`, `MerkleTreeLib`, `MerkleProofLib` — audited-by-adoption, gas-first, no external deps |
+| [Solady](https://github.com/Vectorized/solady) | `v0.1.26` (git tag) | `EIP712`, `ECDSA`, `MerkleTreeLib`, `MerkleProofLib` — audited-by-adoption, gas-first, no external deps |
+| [OpenZeppelin](https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable) `contracts-upgradeable` | `v5.7.0` (git tag) | `UUPSUpgradeable` (proxy utils) — the import prefix for upgradeable components; note its `UUPSUpgradeable.sol` is a 5-line forwarder into the plain package |
+| [OpenZeppelin](https://github.com/OpenZeppelin/openzeppelin-contracts) | `v5.7.0` (git tag) | the real `UUPSUpgradeable` + `ERC1967Proxy` (deploy path), and the transitive target of the forwarder above |
 | forge-std | `v1.17.0` (git tag) | tests + scripts |
 | Chainlink CCIP interfaces | vendored subset of `smartcontractkit/ccip @ 171f9f0` | only `Client`, `IRouterClient`, `IAny2EVMMessageReceiver` — re-verify against upstream before a real lane |
 
@@ -158,13 +160,13 @@ contract's work, not the test double's.
 |---|---|---:|---|
 | `submitArticle` — first leaf (cold slots) | relayer / writer | **127,276** | opens the batch window |
 | `submitArticle` — steady state | relayer / writer | **85,263** | 1h per-author rate limit applies |
-| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **123,923** | ≈95k fixed window/tree overhead |
-| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **672,793** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
+| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **123,989** | ≈95k fixed window/tree overhead |
+| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **672,859** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
 | `verifyAgainstBatch` — 10-leaf root | reader | **12,008** | an `eth_call` costs you nothing |
-| `notarize` — our side (K-gated) | keeper | **36,149** | + CCIP fee + the router's own execution |
+| `notarize` — our side (K-gated) | keeper | **36,127** | + CCIP fee + the router's own execution |
 | gateway `submitArticle` — our side | writer | **37,148** | + L1 gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 13,391 B runtime, `SubmissionGateway` 6,768 B
+Contract sizes: `ArticleAnchor` 14,682 B runtime, `SubmissionGateway` 6,768 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
@@ -206,7 +208,7 @@ affordable where per-article onchain storage would not be.
 | 14b | Deliver bytes the hub never produced (wrong length / wrong function selector) so the decoder reinterprets them as `(batchIndex, root)` | payload is `abi.encodeCall(receiveRoot, …)`; length **and** selector checked before decoding — proven by a hub-encode → gateway-decode round trip | `Gateway.t.sol::test_notarizeRoundTripIntoGateway`, `test_receiveRootRejectsWrongWireFormat` |
 | 15 | Prove a leaf that isn't in the batch (or is from another batch) | `MerkleProofLib` against the frozen root | `Batch.t.sol::test_verifyAgainstBatchFalse`, `Batch.t.sol::test_verifyAgainstBatchTrue` |
 | 16 | Merkle builder/verifier disagree (implementation bug) | differential vs hand-written `NaiveMerkle` + fuzz | `MerkleDifferential.t.sol::test_matchesNaiveReference` (256 runs), `test_oddLeafCounts`, `test_singleLeafRoot` |
-| 17 | Upgrade by anyone / keep a factory-held upgrade key | `_authorizeUpgrade` admin-only; factory admin recorded as `address(0)` | `Upgrade.t.sol::test_nonAdminUpgradeReverts`, `Upgrade.t.sol::test_factoryAdminDisabled` |
+| 17 | Upgrade by anyone, or a second upgrade authority hiding beside the UUPS path | `_authorizeUpgrade` admin-only; the OZ `ERC1967Proxy` has **no admin entry at all** (ERC-1967 admin slot stays `0`); OZ `onlyProxy` blocks any attempt on the bare implementation | `Upgrade.t.sol::test_nonAdminUpgradeReverts`, `test_proxyHasNoAdminSlot`, `test_bareImplementationUpgradeReverts` |
 | 18 | Re-initialize (proxy *or* bare implementation), hijack gateway wiring, corrupt storage on upgrade | `_initialized` lock + zero-admin rejection, `setGateway` admin-only, append-only layout | `Upgrade.t.sol::test_initializeTwiceReverts`, `test_bareImplementationCannotBeInitialized`, `test_initializeRejectsZeroAdmin`, `test_setGatewayOnlyAdmin`, `test_journalPreservedAcrossUpgrade` |
 | 19 | Spam one author's journal | `RATE_LIMIT = 1h` | `Submit.t.sol::test_rateLimit1hReverts` |
 | 20 | Submit an expired article | `block.timestamp ≤ deadline`, checked first on both lanes | `Submit.t.sol::test_expiredDeadlineReverts` |
@@ -337,11 +339,18 @@ caught lying, because the journal settles what it may claim.
 The admin key is the trust floor of the hub: it can upgrade the implementation
 and therefore control the journal. Mitigations in place, all tested:
 
-- **Single upgrade path**: the ERC1967 factory is deployed with admin
-  `address(0)`, so the factory's own `upgrade()` is permanently dead
-  (`test_factoryAdminDisabled`). `upgradeToAndCall` gated by
+- **Single upgrade path**: the hub sits behind OpenZeppelin's `ERC1967Proxy`,
+  which has **no admin/authority entry of its own** — the ERC-1967 admin slot
+  is `0` and stays there (`test_proxyHasNoAdminSlot`), so there is no factory
+  key, guardian or fallback route to disable. `upgradeToAndCall` gated by
   `_authorizeUpgrade` (admin-only, `test_nonAdminUpgradeReverts`) is the only
-  way up.
+  way up, and OZ's `onlyProxy` kills any attempt made against the bare
+  implementation (`test_bareImplementationUpgradeReverts`).
+- **No half-deployed hub can exist**: OZ's proxy refuses construction with
+  empty init data (`ERC1967ProxyUninitialized`) and a botched
+  `initialize(admin_ = 0)` bubbles out of the constructor
+  (`test_zeroAdminProxyCannotBeConstructed`) — a failed deploy leaves nothing
+  on chain to strand users.
 - **`initialize` runs exactly once** (`test_initializeTwiceReverts`) — an
   explicit `_initialized` flag set both by the constructor (so the *bare
   implementation*, which ships with `admin = 0`, can never be initialized by a
@@ -354,8 +363,9 @@ and therefore control the journal. Mitigations in place, all tested:
   a deliberate trade: no transfer means no transfer-hijack, and the price is
   that you must **deploy with a multisig/timelock as `HUB_ADMIN` from day one**;
   there is no later correction.
-- **Renounce plan**: Solady's `UUPSUpgradeable` exposes no renounce function
-  (only `upgradeToAndCall`, `proxiableUUID`, `_authorizeUpgrade`), so
+- **Renounce plan**: OpenZeppelin's `UUPSUpgradeable` exposes no renounce
+  function either (only `upgradeToAndCall`, `proxiableUUID`,
+  `_authorizeUpgrade`, plus the read-only `UPGRADE_INTERFACE_VERSION`), so
   renouncing means **one final upgrade to an implementation whose
   `_authorizeUpgrade` unconditionally reverts**, then discarding the admin
   key. It must **not** be done by zeroing `admin`: initialization is gated by
@@ -424,7 +434,7 @@ IPFS node calls from Solidity; it is commitments only.
 ## Deployment
 
 ```bash
-# 1. Hub (Base) — UUPS proxy, factory admin disabled, admin = your multisig/timelock
+# 1. Hub (Base) — OZ ERC1967 proxy (no admin entry at all); admin = your multisig/timelock
 HUB_ADMIN=<multisig> \
 HUB_ROUTER=<chainlink router on Base> \
 HUB_ETH_CHAIN_SELECTOR=<Chainlink selector for the Base→Ethereum lane> \

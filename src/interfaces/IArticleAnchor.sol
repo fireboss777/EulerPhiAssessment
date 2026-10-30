@@ -19,11 +19,14 @@ import {Client} from "./Client.sol";
 /// variables in interfaces (Error 8274); the implementation's
 /// `public constant` getters satisfy them.
 ///
-/// @dev Deliberately NOT redeclared here (they come from Solady bases, and
+/// @dev Deliberately NOT redeclared here (they come from base contracts, and
 /// redeclaring them would force double-base overrides for no gain):
-/// `eip712Domain()` (EIP712), `upgradeToAndCall()`, `proxiableUUID()` and the
-/// `Upgraded` event (UUPSUpgradeable). Everything else in the hub's ABI —
-/// 28 functions and 3 events — is declared below.
+/// `eip712Domain()` (Solady `EIP712`); `upgradeToAndCall()`,
+/// `proxiableUUID()`, `UPGRADE_INTERFACE_VERSION()` (OpenZeppelin
+/// `UUPSUpgradeable`); and the `Upgraded` event — emitted by OZ's inlined
+/// `ERC1967Utils`, so it IS part of this contract's ABI without being
+/// declared by us. Everything else — 28 functions and 3 events — is declared
+/// below.
 interface IArticleAnchor {
     // ---------------------------------------------------------------------
     // Batch & lane policy

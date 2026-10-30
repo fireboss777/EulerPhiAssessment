@@ -3,12 +3,13 @@ pragma solidity ^0.8.26;
 
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
-import {ERC1967Factory} from "solady/utils/ERC1967Factory.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {ArticleAnchor} from "../src/ArticleAnchor.sol";
 
-/// @notice Deploys ArticleAnchor behind an ERC1967 proxy in the canonical
-/// single-upgrade-path shape: factory admin recorded as address(0), so the
+/// @notice Deploys ArticleAnchor behind OpenZeppelin's ERC1967 proxy — which
+/// has NO admin entry of its own (the ERC-1967 admin slot stays empty), so the
 /// only upgrade route is `upgradeToAndCall` gated by `_authorizeUpgrade`.
+/// The proxy runs `initialize` in its constructor via `data`.
 ///
 /// Env: HUB_ADMIN, HUB_ROUTER, HUB_ETH_CHAIN_SELECTOR
 /// Post-deploy: run DeployGateway, then `setGateway(gatewayAddress)` as admin.
@@ -20,9 +21,8 @@ contract DeployHub is Script {
 
         vm.startBroadcast();
         ArticleAnchor impl = new ArticleAnchor(address(0), address(0), 0, address(0));
-        ERC1967Factory factory = new ERC1967Factory();
-        proxy = factory.deployAndCall(
-            address(impl), address(0), abi.encodeCall(ArticleAnchor.initialize, (admin, router, selector))
+        proxy = address(
+            new ERC1967Proxy(address(impl), abi.encodeCall(ArticleAnchor.initialize, (admin, router, selector)))
         );
         vm.stopBroadcast();
         console.log("HUB_PROXY", proxy);

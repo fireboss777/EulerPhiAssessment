@@ -5,6 +5,18 @@ git = "https://github.com/foundry-rs/forge-std"
 rev = "f3dae6e6ee381f25eb6a246f7da9b85c91a68219"
 
 [[dependencies]]
+name = "openzeppelin-contracts"
+version = "5.7.0"
+git = "https://github.com/OpenZeppelin/openzeppelin-contracts"
+rev = "cab19933c33c2ad1d4c7a84864a3601dddfd16f3"
+
+[[dependencies]]
+name = "openzeppelin-contracts-upgradeable"
+version = "5.7.0"
+git = "https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable"
+rev = "14f52c54d3a1eefbda3d4071efba24d3c1e07e8a"
+
+[[dependencies]]
 name = "solady"
 version = "0.1.26"
 git = "https://github.com/Vectorized/solady.git"
