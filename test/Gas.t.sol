@@ -10,8 +10,9 @@ import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
 import {MockRouter} from "./mocks/MockRouter.sol";
 
 /// @notice Marginal-cost meter: the numbers quoted in README's cost table.
-/// Each figure is a `gasleft()` delta around ONE call (no deploy, no fixture),
-/// i.e. what a keeper or writer actually pays on top of transaction overhead.
+/// Each figure is a `gasleft()` delta around ONE call taken from a COLD
+/// access list (`vm.cool` first) — the state a real, separate transaction
+/// starts from — so no fixture warmth leaks into the numbers.
 /// Smoke-asserted so a cost regression turns this red instead of silently
 /// shipping a stale README table.
 contract GasTest is ArticleTestBase {
@@ -28,6 +29,7 @@ contract GasTest is ArticleTestBase {
     {
         p = payloadFor(vm.addr(key), salt);
         bytes memory sig = signArticle(hub, p, key);
+        vm.cool(address(hub)); // fresh transaction: all slots cold
         uint256 g0 = gasleft();
         hub.submitArticle(leafOf(p), sig, p);
         used = g0 - gasleft();
@@ -46,12 +48,14 @@ contract GasTest is ArticleTestBase {
     function test_gasAnchor() public {
         ArticleAnchor hub = _newHub(address(0));
         seedBatch(hub, 10);
+        vm.cool(address(hub));
         uint256 g0 = gasleft();
         hub.anchorNextBatch();
         uint256 anchor10 = g0 - gasleft();
 
         ArticleAnchor hub2 = _newHub(address(0));
         seedBatch(hub2, 200);
+        vm.cool(address(hub2));
         g0 = gasleft();
         hub2.anchorNextBatch();
         uint256 anchor200 = g0 - gasleft();
@@ -68,6 +72,7 @@ contract GasTest is ArticleTestBase {
         hub.anchorNextBatch();
         bytes32[] memory proof = MerkleTreeLib.leafProof(MerkleTreeLib.build(sliceJournal(hub, 0, 10)), 3);
 
+        vm.cool(address(hub)); // a reader's eth_call starts cold
         uint256 g0 = gasleft();
         bool ok = hub.verifyAgainstBatch(0, hub.journal(3), proof);
         uint256 used = g0 - gasleft();
@@ -85,6 +90,8 @@ contract GasTest is ArticleTestBase {
         hub.anchorNextBatch();
         vm.roll(hub.anchoredAtBlock(0) + hub.NOTARY_K());
         vm.deal(address(this), 1 ether);
+        vm.cool(address(hub));
+        vm.cool(address(mock));
 
         uint256 g0 = gasleft();
         hub.notarize{value: mock.fee()}(0);
