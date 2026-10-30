@@ -145,7 +145,8 @@ contract GatewayTest is ArticleTestBase {
 
     function test_gatewayPayloadLandsInHub() public {
         // Hub pinned to this gateway, mock as shared router.
-        ArticleAnchor hub = new ArticleAnchor(address(this), address(mock), BASE_SEL, address(gw));
+        ArticleAnchor hub = deployHub(address(this), address(mock), BASE_SEL);
+        hub.setGateway(address(gw));
         assertEq(hub.gateway(), address(gw), "wiring");
 
         uint256 key = AUTHOR_KEY;
@@ -177,7 +178,7 @@ contract GatewayTest is ArticleTestBase {
     // ------------------------------------------------------------------
 
     function test_notarizeRoundTripIntoGateway() public {
-        ArticleAnchor hub = new ArticleAnchor(address(this), address(mock), BASE_SEL, address(0x9999));
+        ArticleAnchor hub = deployHub(address(this), address(mock), BASE_SEL);
         SubmissionGateway gw2 = new SubmissionGateway(address(mock), address(hub), BASE_SEL);
         hub.setGateway(address(gw2)); // production wiring, not a dummy address
         seedBatch(hub, 10);

@@ -132,10 +132,13 @@ interface IArticleAnchor {
     // ---------------------------------------------------------------------
 
     /// @notice Proxy initializer — constructors don't run behind ERC1967
-    /// proxies. Guarded by an explicit `_initialized` flag: the proxy starts
-    /// false (its storage is fresh), the bare implementation starts true (its
-    /// constructor ran), so this runs exactly once and on the proxy only.
-    /// @dev Reverts `"zero admin"` on `admin_ = address(0)`: an admin-less hub
+    /// proxies, so configuration lands here instead, passed as the proxy's
+    /// constructor `_data` (OZ docs: initialize as early as possible). Guarded
+    /// by OpenZeppelin's `initializer` modifier: at most once per proxy, and
+    /// the bare implementation is locked forever by `_disableInitializers()`
+    /// in its own constructor, so no stranger can ever own it.
+    /// @dev Reverts `Initializable.InvalidInitialization()` on a second call,
+    /// and reverts `"zero admin"` on `admin_ = address(0)` — an admin-less hub
     /// could never be upgraded.
     function initialize(address admin_, address router_, uint64 chainSelector_) external;
 

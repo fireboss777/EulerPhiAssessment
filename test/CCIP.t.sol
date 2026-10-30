@@ -20,7 +20,8 @@ contract CCIPTest is ArticleTestBase {
     function setUp() public override {
         super.setUp();
         mock = new MockRouter();
-        hub = new ArticleAnchor(address(this), address(mock), TEST_SEL, GATEWAY);
+        hub = deployHub(address(this), address(mock), TEST_SEL);
+        hub.setGateway(GATEWAY);
     }
 
     function _inbound(uint64 sel, address sender, bytes32 leaf, bytes memory sig, ArticleSubmission memory p)

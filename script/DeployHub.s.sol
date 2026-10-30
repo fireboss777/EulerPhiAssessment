@@ -20,7 +20,7 @@ contract DeployHub is Script {
         uint64 selector = uint64(vm.envUint("HUB_ETH_CHAIN_SELECTOR"));
 
         vm.startBroadcast();
-        ArticleAnchor impl = new ArticleAnchor(address(0), address(0), 0, address(0));
+        ArticleAnchor impl = new ArticleAnchor();
         proxy = address(
             new ERC1967Proxy(address(impl), abi.encodeCall(ArticleAnchor.initialize, (admin, router, selector)))
         );

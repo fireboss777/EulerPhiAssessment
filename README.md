@@ -154,30 +154,33 @@ Measured by `test/Gas.t.sol` as a `gasleft()` delta around a single call,
 taken from a **cold access list** (`vm.cool` first) — the state a real,
 separate transaction starts from, not the warm state a test fixture leaves
 behind — with the mock router's forensics disabled so the number is *our*
-contract's work, not the test double's.
+contract's work, not the test double's. Every hub call goes **through the
+ERC-1967 proxy** (delegatecall): since the bare implementation is
+constructor-locked, that is the only deployable shape — so these are
+production-shaped numbers, not direct-call ones.
 
 | Operation | Who pays | Gas (marginal) | Notes |
 |---|---|---:|---|
-| `submitArticle` — first leaf (cold slots) | relayer / writer | **127,276** | opens the batch window |
-| `submitArticle` — steady state | relayer / writer | **85,263** | 1h per-author rate limit applies |
-| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **123,989** | ≈95k fixed window/tree overhead |
-| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **672,859** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
-| `verifyAgainstBatch` — 10-leaf root | reader | **12,008** | an `eth_call` costs you nothing |
-| `notarize` — our side (K-gated) | keeper | **36,127** | + CCIP fee + the router's own execution |
+| `submitArticle` — first leaf (cold slots) | relayer / writer | **130,075** | opens the batch window |
+| `submitArticle` — steady state | relayer / writer | **88,062** | 1h per-author rate limit applies |
+| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **126,460** | ≈98k fixed window/tree overhead |
+| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **675,330** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
+| `verifyAgainstBatch` — 10-leaf root | reader | **14,995** | an `eth_call` costs you nothing |
+| `notarize` — our side (K-gated) | keeper | **38,598** | + CCIP fee + the router's own execution |
 | gateway `submitArticle` — our side | writer | **37,148** | + L1 gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 14,682 B runtime, `SubmissionGateway` 6,768 B
+Contract sizes: `ArticleAnchor` 14,997 B runtime, `SubmissionGateway` 6,768 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
-rollup's L1 data component. At 85,263 gas: 0.01 gwei ≈ 0.85 µETH, 0.1 gwei ≈
-8.5 µETH — i.e. **fractions of a cent to a few cents per article** at an ETH
+rollup's L1 data component. At 88,062 gas: 0.01 gwei ≈ 0.88 µETH, 0.1 gwei ≈
+8.8 µETH — i.e. **fractions of a cent to a few cents per article** at an ETH
 price of $3k, before the (small, calldata-based) rollup data fee. Numbers are
 examples, not promises: prices move, and the two CCIP rows above are *our*
 side only — the router's execution and Chainlink's message fee are extra and
 must be calibrated on a real testnet.
 
-The two rows worth internalizing: **verification is ~12k gas** (free for
+The two rows worth internalizing: **verification is ~15k gas** (free for
 readers — it is a view call) and **anchoring scales gently** (~2.9k/leaf, of
 which ~2.1k is one cold journal read), which is what makes a Merkle journal
 affordable where per-article onchain storage would not be.
@@ -209,7 +212,7 @@ affordable where per-article onchain storage would not be.
 | 15 | Prove a leaf that isn't in the batch (or is from another batch) | `MerkleProofLib` against the frozen root | `Batch.t.sol::test_verifyAgainstBatchFalse`, `Batch.t.sol::test_verifyAgainstBatchTrue` |
 | 16 | Merkle builder/verifier disagree (implementation bug) | differential vs hand-written `NaiveMerkle` + fuzz | `MerkleDifferential.t.sol::test_matchesNaiveReference` (256 runs), `test_oddLeafCounts`, `test_singleLeafRoot` |
 | 17 | Upgrade by anyone, or a second upgrade authority hiding beside the UUPS path | `_authorizeUpgrade` admin-only; the OZ `ERC1967Proxy` has **no admin entry at all** (ERC-1967 admin slot stays `0`); OZ `onlyProxy` blocks any attempt on the bare implementation | `Upgrade.t.sol::test_nonAdminUpgradeReverts`, `test_proxyHasNoAdminSlot`, `test_bareImplementationUpgradeReverts` |
-| 18 | Re-initialize (proxy *or* bare implementation), hijack gateway wiring, corrupt storage on upgrade | `_initialized` lock + zero-admin rejection, `setGateway` admin-only, append-only layout | `Upgrade.t.sol::test_initializeTwiceReverts`, `test_bareImplementationCannotBeInitialized`, `test_initializeRejectsZeroAdmin`, `test_setGatewayOnlyAdmin`, `test_journalPreservedAcrossUpgrade` |
+| 18 | Re-initialize (proxy *or* bare implementation), hijack gateway wiring, corrupt storage on upgrade | OZ `initializer` lock (bare impl `_disableInitializers()`-locked at construction) + zero-admin rejection, `setGateway` admin-only, append-only layout | `Upgrade.t.sol::test_initializeTwiceReverts`, `test_bareImplementationCannotBeInitialized`, `test_initializeRejectsZeroAdmin`, `test_setGatewayOnlyAdmin`, `test_journalPreservedAcrossUpgrade` |
 | 19 | Spam one author's journal | `RATE_LIMIT = 1h` | `Submit.t.sol::test_rateLimit1hReverts` |
 | 20 | Submit an expired article | `block.timestamp ≤ deadline`, checked first on both lanes | `Submit.t.sol::test_expiredDeadlineReverts` |
 | 21 | Run off with / overcharge the gateway fee | `getFee` quote, `msg.value ≥ fee`, refund excess, gateway retains 0 | `Gateway.t.sol::test_insufficientFeeReverts`, `test_excessRefunded` |
@@ -285,7 +288,7 @@ and why `NaiveMerkle` stays assembly-free and separately written.
 the cheapest possible "is this article known" (one SSTORE, O(1)), but it buys
 nothing anyone else can use: no inclusion proof for readers, no composable
 batch root, no notarizable artifact for L1. The Merkle route costs a fixed
-≈95k per batch plus ≈2.9k per leaf — call it **~3k gas per article to make
+≈98k per batch plus ≈2.9k per leaf — call it **~3k gas per article to make
 every article provable to a third party** (the batch's fixed overhead is paid
 once, amortized over up to 200 articles) — and returns proofs that survive
 mirrors, cross-chain copies and independent re-hosting. For a *publishing*
@@ -351,15 +354,17 @@ and therefore control the journal. Mitigations in place, all tested:
   `initialize(admin_ = 0)` bubbles out of the constructor
   (`test_zeroAdminProxyCannotBeConstructed`) — a failed deploy leaves nothing
   on chain to strand users.
-- **`initialize` runs exactly once** (`test_initializeTwiceReverts`) — an
-  explicit `_initialized` flag set both by the constructor (so the *bare
-  implementation*, which ships with `admin = 0`, can never be initialized by a
-  stranger: `test_bareImplementationCannotBeInitialized`) and by the first
-  `initialize` call on the proxy — which also rejects `admin_ = address(0)`
+- **`initialize` runs exactly once**, via OpenZeppelin's `initializer`
+  modifier. The constructor writes **no variable at all** — OZ's documented
+  best practice for proxied contracts: its only job is to call
+  `_disableInitializers()`, which locks the bare implementation forever so no
+  stranger can ever own it (`test_bareImplementationCannotBeInitialized`;
+  a second call on the proxy reverts `InvalidInitialization()` —
+  `test_initializeTwiceReverts`). The body still rejects `admin_ = address(0)`
   (`test_initializeRejectsZeroAdmin`). **Storage survives upgrades**
   (`test_journalPreservedAcrossUpgrade`).
-- **`admin` is written exactly twice** — constructor or `initialize` — and
-  has **no transfer function**. It cannot be rotated after deployment. That is
+- **`admin` is written exactly once** — by `initialize`, on the proxy (the
+  constructor writes no configuration) — and has **no transfer function**. It cannot be rotated after deployment. That is
   a deliberate trade: no transfer means no transfer-hijack, and the price is
   that you must **deploy with a multisig/timelock as `HUB_ADMIN` from day one**;
   there is no later correction.
@@ -369,8 +374,9 @@ and therefore control the journal. Mitigations in place, all tested:
   renouncing means **one final upgrade to an implementation whose
   `_authorizeUpgrade` unconditionally reverts**, then discarding the admin
   key. It must **not** be done by zeroing `admin`: initialization is gated by
-  the separate `_initialized` flag (not by the admin value), so zeroing admin
-  would *not* re-open `initialize` — it would instead permanently brick
+  OpenZeppelin's `Initializable` version slot (not by the admin value), so
+  zeroing admin would *not* re-open `initialize` — it would instead
+  permanently brick
   `setGateway` and every `admin only` path. Nothing can write `admin` after
   init today (it is set exactly once by `initialize`), so zeroing it is not an
   open hole but it is a wrong renounce mechanism: upgrade to a locked

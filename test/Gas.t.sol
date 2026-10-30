@@ -20,7 +20,9 @@ contract GasTest is ArticleTestBase {
     uint256 internal constant KEY = 0x9A5;
 
     function _newHub(address router) internal returns (ArticleAnchor) {
-        return new ArticleAnchor(address(this), router, SEL, address(0x9999));
+        ArticleAnchor hub = deployHub(address(this), router, SEL);
+        hub.setGateway(address(0x9999));
+        return hub;
     }
 
     function _measuredSubmit(ArticleAnchor hub, uint256 salt, uint256 key)

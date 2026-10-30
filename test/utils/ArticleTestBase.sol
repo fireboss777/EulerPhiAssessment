@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {ECDSA} from "solady/utils/ECDSA.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {ArticleAnchor} from "../../src/ArticleAnchor.sol";
 import {ArticleSubmission} from "../../src/ArticleLib.sol";
 
@@ -34,7 +35,21 @@ abstract contract ArticleTestBase is Test {
     receive() external payable {}
 
     function deployHub() internal returns (ArticleAnchor hub) {
-        hub = new ArticleAnchor(address(this), address(0), uint64(block.chainid), address(0));
+        hub = deployHub(address(this), address(0), uint64(block.chainid));
+    }
+
+    /// @dev Production shape: a LOCKED implementation behind an OZ ERC1967
+    /// proxy, configuration passed as the proxy's init data — direct deploys
+    /// are useless now (the bare impl is `_disableInitializers()`-locked).
+    function deployHub(address admin_, address router_, uint64 chainSelector_) internal returns (ArticleAnchor hub) {
+        ArticleAnchor impl = new ArticleAnchor();
+        hub = ArticleAnchor(
+            address(
+                new ERC1967Proxy(
+                    address(impl), abi.encodeCall(ArticleAnchor.initialize, (admin_, router_, chainSelector_))
+                )
+            )
+        );
     }
 
     function leafOf(ArticleSubmission memory p) internal pure returns (bytes32) {

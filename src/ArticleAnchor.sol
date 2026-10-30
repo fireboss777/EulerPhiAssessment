@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {EIP712} from "solady/utils/EIP712.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {MerkleProofLib} from "solady/utils/MerkleProofLib.sol";
 import {MerkleTreeLib} from "solady/utils/MerkleTreeLib.sol";
@@ -17,7 +18,7 @@ import {IArticleAnchor} from "./interfaces/IArticleAnchor.sol";
 /// and documented on `IArticleAnchor`, which this contract inherits — read the
 /// interface for the API. Only implementation-side members (constructor,
 /// modifiers, `internal` helpers) are documented here.
-contract ArticleAnchor is IArticleAnchor, EIP712, UUPSUpgradeable {
+contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable {
     // ---------------------------------------------------------------------
     // Constants (see plan: batch policy)
     // ---------------------------------------------------------------------
@@ -67,29 +68,24 @@ contract ArticleAnchor is IArticleAnchor, EIP712, UUPSUpgradeable {
     mapping(uint256 => uint256) public anchoredAtBlock;
     /// @inheritdoc IArticleAnchor
     uint256 public anchoredBatches;
-    /// @dev Appended last so earlier slot numbers never move (UUPS-safe).
-    /// Set in the constructor too: the bare implementation — which ships with
-    /// `admin = address(0)` — must not be initializable by anyone.
-    bool private _initialized;
-
     modifier onlyAdmin() {
         require(msg.sender == admin, "admin only");
         _;
     }
 
-    constructor(address admin_, address router_, uint64 chainSelector_, address gateway_) {
-        _initialized = true; // lock the bare implementation
-        admin = admin_;
-        router = router_;
-        ethChainSelector = chainSelector_;
-        gateway = gateway_;
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    /// @dev OZ best practice (docs, `Initializable`): a contract deployed
+    /// behind a proxy writes NO configuration here — constructor state would
+    /// live on the implementation and never be visible through the proxy.
+    /// The constructor's only job is to LOCK this implementation so it can
+    /// never be initialized by anyone: `_disableInitializers()`.
+    constructor() {
+        _disableInitializers();
     }
 
     /// @inheritdoc IArticleAnchor
-    function initialize(address admin_, address router_, uint64 chainSelector_) external {
-        require(!_initialized, "initialized");
+    function initialize(address admin_, address router_, uint64 chainSelector_) external initializer {
         require(admin_ != address(0), "zero admin");
-        _initialized = true;
         admin = admin_;
         router = router_;
         ethChainSelector = chainSelector_;

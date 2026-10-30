@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ArticleAnchor} from "../src/ArticleAnchor.sol";
 import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
 import {ArticleAnchorV2Stub} from "./mocks/ArticleAnchorV2Stub.sol";
@@ -17,7 +18,7 @@ contract UpgradeTest is ArticleTestBase {
         internal
         returns (ArticleAnchor hub, ArticleAnchor impl)
     {
-        impl = new ArticleAnchor(address(0), address(0), 0, address(0));
+        impl = new ArticleAnchor();
         address proxy = address(
             new ERC1967Proxy(address(impl), abi.encodeCall(ArticleAnchor.initialize, (admin_, router_, chainSelector_)))
         );
@@ -26,7 +27,7 @@ contract UpgradeTest is ArticleTestBase {
 
     function test_nonAdminUpgradeReverts() public {
         (ArticleAnchor hub,) = _proxyHub(address(this), address(0), 8453);
-        ArticleAnchor newImpl = new ArticleAnchor(address(0), address(0), 0, address(0));
+        ArticleAnchor newImpl = new ArticleAnchor();
 
         vm.prank(address(0xBAD));
         vm.expectRevert("admin only");
@@ -65,16 +66,16 @@ contract UpgradeTest is ArticleTestBase {
     function test_initializeTwiceReverts() public {
         (ArticleAnchor hub,) = _proxyHub(address(this), address(0), 8453);
 
-        vm.expectRevert("initialized");
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
         hub.initialize(address(0xBAD), address(0), 8453);
     }
 
     /// @dev The bare implementation ships with `admin = address(0)` in the
     /// deploy script — its own `initialize` guard must not be open on it.
     function test_bareImplementationCannotBeInitialized() public {
-        ArticleAnchor impl = new ArticleAnchor(address(0), address(0), 0, address(0));
+        ArticleAnchor impl = new ArticleAnchor();
 
-        vm.expectRevert("initialized");
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
         impl.initialize(address(0xBAD), address(0), 8453);
     }
 
@@ -84,7 +85,7 @@ contract UpgradeTest is ArticleTestBase {
     /// satisfy its guard with a harmless view call — that leaves the hub's own
     /// `_initialized` flag untouched, i.e. the hub really is uninitialized.
     function test_initializeRejectsZeroAdmin() public {
-        ArticleAnchor impl = new ArticleAnchor(address(0), address(0), 0, address(0));
+        ArticleAnchor impl = new ArticleAnchor();
         ArticleAnchor fresh =
             ArticleAnchor(address(new ERC1967Proxy(address(impl), abi.encodeWithSignature("journalLength()"))));
 
@@ -99,7 +100,7 @@ contract UpgradeTest is ArticleTestBase {
     /// of the proxy CONSTRUCTOR, so no broken, un-upgradeable proxy is ever
     /// left behind on chain.
     function test_zeroAdminProxyCannotBeConstructed() public {
-        ArticleAnchor impl = new ArticleAnchor(address(0), address(0), 0, address(0));
+        ArticleAnchor impl = new ArticleAnchor();
 
         vm.expectRevert("zero admin");
         new ERC1967Proxy(address(impl), abi.encodeCall(ArticleAnchor.initialize, (address(0), address(0), 8453)));
@@ -110,8 +111,8 @@ contract UpgradeTest is ArticleTestBase {
     /// error selector — Solady's guard reverted with a different one, which is
     /// exactly what makes this test RED before the library swap.
     function test_bareImplementationUpgradeReverts() public {
-        ArticleAnchor impl = new ArticleAnchor(address(0), address(0), 0, address(0));
-        ArticleAnchor other = new ArticleAnchor(address(0), address(0), 0, address(0));
+        ArticleAnchor impl = new ArticleAnchor();
+        ArticleAnchor other = new ArticleAnchor();
 
         vm.expectRevert(UUPSUpgradeable.UUPSUnauthorizedCallContext.selector);
         impl.upgradeToAndCall(address(other), "");
