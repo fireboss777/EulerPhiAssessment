@@ -1,2 +1,4 @@
+forge-std-1.17.0/=dependencies/forge-std-1.17.0/
 solady-0.1.26/=dependencies/solady-0.1.26/
 solady/=dependencies/solady-0.1.26/src/
+forge-std/=dependencies/forge-std-1.17.0/src/
