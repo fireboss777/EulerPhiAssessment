@@ -29,6 +29,10 @@ abstract contract ArticleTestBase is Test {
         vm.warp(block.timestamp + 2 hours);
     }
 
+    /// @dev Refundable-ETH sink: this test contract plays the user role in
+    /// gateway tests, so it must accept ETH like an EOA would.
+    receive() external payable {}
+
     function deployHub() internal returns (ArticleAnchor hub) {
         hub = new ArticleAnchor(address(this), address(0), uint64(block.chainid), address(0));
     }
