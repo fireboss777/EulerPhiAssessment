@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {ArticleSubmission} from "./ArticleLib.sol";
 import {Client} from "./interfaces/Client.sol";
 import {IRouterClient} from "./interfaces/IRouterClient.sol";
+import {ISubmissionGateway} from "./interfaces/ISubmissionGateway.sol";
 import {IAny2EVMMessageReceiver} from "./interfaces/IAny2EVMMessageReceiver.sol";
 
 /// @title SubmissionGateway — the L1 endpoint (two roles, both pinned).
@@ -80,7 +81,18 @@ contract SubmissionGateway is IAny2EVMMessageReceiver {
     function ccipReceive(Client.Any2EVMMessage calldata message) external {
         require(message.sourceChainSelector == baseChainSelector, "bad chain");
         require(abi.decode(message.sender, (address)) == hub, "bad sender");
-        (uint256 batchIndex, bytes32 root) = abi.decode(message.data, (uint256, bytes32));
+        _applyNotaryPayload(message.data);
+    }
+
+    /// @dev The hub encodes `receiveRoot` with `abi.encodeCall` — 4-byte
+    /// selector + the two encoded words (68 bytes). Length AND selector are
+    /// checked before decoding, so a payload built for any other function can
+    /// never be reinterpreted as `(batchIndex, root)`. Verified end-to-end by
+    /// `test_notarizeRoundTripIntoGateway` (hub encode -> gateway decode).
+    function _applyNotaryPayload(bytes calldata data) internal {
+        require(data.length == 68, "bad len");
+        require(bytes4(data[0:4]) == ISubmissionGateway.receiveRoot.selector, "bad selector");
+        (uint256 batchIndex, bytes32 root) = abi.decode(data[4:], (uint256, bytes32));
         receiveRoot(batchIndex, root);
     }
 

@@ -41,8 +41,8 @@ contract GasTest is ArticleTestBase {
         (uint256 warm,) = _measuredSubmit(hub, 2, KEY ^ 0x51);
         console.log("submit (cold, 1st leaf)   ", cold);
         console.log("submit (steady state)     ", warm);
-        assertLt(cold, 300_000, "submit cost drifted up");
-        assertLt(warm, 300_000, "steady submit cost drifted up");
+        assertLt(cold, 180_000, "submit cost drifted up");
+        assertLt(warm, 120_000, "steady submit cost drifted up");
     }
 
     function test_gasAnchor() public {
@@ -62,8 +62,8 @@ contract GasTest is ArticleTestBase {
 
         console.log("anchor (10 leaves)        ", anchor10);
         console.log("anchor (200 leaves)       ", anchor200);
-        assertLt(anchor10, 500_000, "anchor(10) cost drifted up");
-        assertLt(anchor200, 3_000_000, "anchor(200) cost drifted up");
+        assertLt(anchor10, 175_000, "anchor(10) cost drifted up");
+        assertLt(anchor200, 950_000, "anchor(200) cost drifted up");
     }
 
     function test_gasVerify() public {
@@ -79,7 +79,7 @@ contract GasTest is ArticleTestBase {
 
         assertTrue(ok, "proof must verify");
         console.log("verify (10-leaf batch)    ", used);
-        assertLt(used, 60_000, "verify cost drifted up");
+        assertLt(used, 17_000, "verify cost drifted up");
     }
 
     function test_gasNotarize() public {
@@ -98,7 +98,7 @@ contract GasTest is ArticleTestBase {
         uint256 used = g0 - gasleft();
 
         console.log("notarize (incl. ccipSend) ", used);
-        assertLt(used, 500_000, "notarize cost drifted up");
+        assertLt(used, 52_000, "notarize cost drifted up");
     }
 
     function test_gasGatewaySubmit() public {
@@ -115,6 +115,6 @@ contract GasTest is ArticleTestBase {
         uint256 used = g0 - gasleft();
 
         console.log("gateway submit (incl fee) ", used);
-        assertLt(used, 500_000, "gateway cost drifted up");
+        assertLt(used, 52_000, "gateway cost drifted up");
     }
 }

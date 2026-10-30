@@ -9,9 +9,15 @@ AUTHOR_KEY=0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d # 
 ADMIN=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 
 mkdir -p /tmp/opencode
+# Refuse to run against a node we did not start (would assert on foreign state).
+if cast chain-id --rpc-url "$RPC" >/dev/null 2>&1; then
+  echo "FAIL: $RPC already serves a node; stop it first (pkill -x anvil)"; exit 1
+fi
 anvil --silent --port 8545 >/tmp/opencode/anvil.log 2>&1 &
 ANVIL_PID=$!
 trap 'kill $ANVIL_PID 2>/dev/null || true' EXIT
+sleep 0.3
+kill -0 "$ANVIL_PID" 2>/dev/null || { echo "FAIL: anvil did not start"; cat /tmp/opencode/anvil.log; exit 1; }
 for _ in $(seq 1 50); do cast chain-id --rpc-url "$RPC" >/dev/null 2>&1 && break; sleep 0.2; done
 cast chain-id --rpc-url "$RPC" >/dev/null
 echo "== anvil up"

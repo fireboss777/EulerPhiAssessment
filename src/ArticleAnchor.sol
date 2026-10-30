@@ -26,7 +26,7 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
     uint256 public constant MIN_BATCH = 10;
     uint256 public constant MAX_BATCH = 200;
     uint256 public constant BATCH_DEADLINE = 6 hours;
-    uint256 public constant RATE_LIMIT = 1 hours;
+    uint256 public constant RATE_LIMIT = 60 minutes;
     /// @notice L2 block confirmations required before a root may be notarized upward.
     uint256 public constant NOTARY_K = 64;
     /// @notice Receiver-side gas limit attached to the CCIP notary message.
@@ -46,13 +46,19 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
     // Journal & batch state
     // ---------------------------------------------------------------------
     bytes32[] public journal;
-    mapping(bytes32 => bool) public usedUuid;
+    /// @notice Dedup key is (author, uuid): an attacker must not be able to
+    /// squat a victim's predictable uuid with a payload of their own.
+    mapping(address => mapping(bytes32 => bool)) public usedUuid;
     mapping(address => uint256) public lastSubmit;
     uint256 public batchOpenedAt;
     uint256 public lastAnchoredIndex;
     mapping(uint256 => bytes32) public rootAt;
     mapping(uint256 => uint256) public anchoredAtBlock;
     uint256 public anchoredBatches;
+    /// @dev Appended last so earlier slot numbers never move (UUPS-safe).
+    /// Set in the constructor too: the bare implementation — which ships with
+    /// `admin = address(0)` — must not be initializable by anyone.
+    bool private _initialized;
 
     event Submitted(address indexed author, address indexed submitter, bytes32 leafDigest);
     event RootAnchored(uint256 indexed batchIndex, bytes32 root, uint256 start, uint256 end);
@@ -64,6 +70,7 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
     }
 
     constructor(address admin_, address router_, uint64 chainSelector_, address gateway_) {
+        _initialized = true; // lock the bare implementation
         admin = admin_;
         router = router_;
         ethChainSelector = chainSelector_;
@@ -71,10 +78,13 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
     }
 
     /// @notice Proxy initializer — constructors don't run behind ERC1967
-    /// proxies. Guarded by `admin == 0` (fresh proxy storage only; the direct-
-    /// deploy constructor sets admin, so the implementation can't be re-inited).
+    /// proxies. Guarded by an explicit `_initialized` flag: the proxy starts
+    /// false (its storage is fresh), the bare implementation starts true (its
+    /// constructor ran), so this runs exactly once and on the proxy only.
     function initialize(address admin_, address router_, uint64 chainSelector_) external {
-        require(admin == address(0), "initialized");
+        require(!_initialized, "initialized");
+        require(admin_ != address(0), "zero admin");
+        _initialized = true;
         admin = admin_;
         router = router_;
         ethChainSelector = chainSelector_;
@@ -94,7 +104,7 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
         return ("EulerPhiArticle", "1");
     }
 
-    function _authorizeUpgrade(address) internal override {
+    function _authorizeUpgrade(address) internal view override {
         require(msg.sender == admin, "admin only");
     }
 
@@ -122,9 +132,9 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
         bytes32 digest = _hashTypedData(ArticleLib.hashStruct(payload));
         require(ECDSA.recover(digest, sig) == payload.author, "not author");
         require(block.timestamp >= lastSubmit[payload.author] + RATE_LIMIT, "rate");
-        require(!usedUuid[payload.uuid], "dup");
+        require(!usedUuid[payload.author][payload.uuid], "dup");
 
-        usedUuid[payload.uuid] = true;
+        usedUuid[payload.author][payload.uuid] = true;
         lastSubmit[payload.author] = block.timestamp;
         // First leaf of a fresh batch window opens (and re-opens) the deadline.
         if (journal.length == lastAnchoredIndex) batchOpenedAt = block.timestamp;

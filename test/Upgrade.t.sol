@@ -77,4 +77,27 @@ contract UpgradeTest is ArticleTestBase {
         vm.expectRevert("initialized");
         hub.initialize(address(0xBAD), address(0), 8453);
     }
+
+    /// @dev The bare implementation ships with `admin = address(0)` in the
+    /// deploy script — its own `initialize` guard must not be open on it.
+    function test_bareImplementationCannotBeInitialized() public {
+        ArticleAnchor impl = new ArticleAnchor(address(0), address(0), 0, address(0));
+
+        vm.expectRevert("initialized");
+        impl.initialize(address(0xBAD), address(0), 8453);
+    }
+
+    /// @dev A fresh proxy must refuse `admin_ = 0`: an admin-less hub would be
+    /// permanently un-upgradeable (nobody passes `msg.sender == admin`).
+    function test_initializeRejectsZeroAdmin() public {
+        ArticleAnchor impl = new ArticleAnchor(address(0), address(0), 0, address(0));
+        ERC1967Factory factory = new ERC1967Factory();
+        ArticleAnchor fresh = ArticleAnchor(factory.deployAndCall(address(impl), address(0), ""));
+
+        vm.expectRevert("zero admin");
+        fresh.initialize(address(0), address(0), 8453);
+
+        fresh.initialize(address(this), address(0), 8453); // still initializable
+        assertEq(fresh.admin(), address(this), "legit init works");
+    }
 }

@@ -23,7 +23,7 @@ end-to-end test all run through `forge`/`cast`. There is no JS/TS/npm anywhere
 git clone <this-repo> && cd <this-repo>
 forge soldeer install        # forge-std 1.17.0 + solady 0.1.26, from soldeer.lock
 forge build
-forge test                   # 49 tests, 8 suites
+forge test                   # 55 tests, 8 suites
 forge snapshot               # regenerates .gas-snapshot
 bash script/e2e-anvil.sh     # live end-to-end on anvil: submit → anchor → notarize
 ```
@@ -34,7 +34,7 @@ Dependencies are **Soldeer-managed only** (no git submodules, no npm):
 |---|---|---|
 | [Solady](https://github.com/Vectorized/solady) | `v0.1.26` (git tag) | `EIP712`, `ECDSA`, `UUPSUpgradeable`, `ERC1967Factory`, `MerkleTreeLib`, `MerkleProofLib` — audited-by-adoption, gas-first, no external deps |
 | forge-std | `v1.17.0` (git tag) | tests + scripts |
-| Chainlink CCIP interfaces | vendored subset of `smartcontractkit/ccip @ ccip-develop` | only `Client`, `IRouterClient`, `IAny2EVMMessageReceiver` — re-verify against upstream before a real lane |
+| Chainlink CCIP interfaces | vendored subset of `smartcontractkit/ccip @ 171f9f0` | only `Client`, `IRouterClient`, `IAny2EVMMessageReceiver` — re-verify against upstream before a real lane |
 
 ---
 
@@ -75,7 +75,7 @@ records notarized roots in order.
 2. **Anyone submits it.** The caller pays gas; third-party relaying is normal
    operation, not a special path. Checks in order: `deadline` → leaf/payload
    digest → 65-byte canonical low-s signature → recovered signer == `author`
-   → per-author 1h rate limit → unused `uuid`.
+   -> per-author 1h rate limit -> unused `(author, uuid)`.
 3. **Leaf is journaled**: `journal.push(keccak256(abi.encode(payload)))`.
    Content stays off-chain; only the commitment travels.
 4. **Anyone closes the batch**: `anchorNextBatch()` when ≥ `MIN_BATCH(10)`
@@ -99,6 +99,13 @@ protocol never charges; you pay the network for the transaction you send.
 |---|---|---|---|
 | **Direct** (cheap) | Base (L2) | one L2 tx — a few cents, often less | default: writers, relayers, keepers |
 | **Paid entry** (one hop) | Ethereum (L1) | L1 gas + the CCIP fee quoted by `getFee`, excess refunded | you are on L1 and want one transaction to land it on the hub |
+
+Because the gateway checks only chain-agnostic state (digest + deadline) and
+**no signature** (decision 1a), a payload the hub will later reject — rate
+limited, duplicate uuid — still passes L1 and **burns the CCIP fee** on the
+hub-side revert. Check `lastSubmit[author] + RATE_LIMIT` and
+`usedUuid[author][uuid]` off-chain before paying for the L1 lane; the direct
+L2 lane has no such downside (the revert only costs your own gas).
 
 `SubmissionGateway.submitArticle` is `payable` for exactly one reason: on L1 a
 transaction must also buy the cross-chain message. The fee is **Chainlink's,
@@ -149,19 +156,19 @@ contract's work, not the test double's.
 
 | Operation | Who pays | Gas (marginal) | Notes |
 |---|---|---:|---|
-| `submitArticle` — first leaf (cold slots) | relayer / writer | **127,106** | opens the batch window |
-| `submitArticle` — steady state | relayer / writer | **85,093** | 1h per-author rate limit applies |
-| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **123,945** | ≈95k fixed window/tree overhead |
-| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **672,815** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
-| `verifyAgainstBatch` — 10-leaf root | reader | **12,030** | an `eth_call` costs you nothing |
-| `notarize` — our side (K-gated) | keeper | **36,047** | + CCIP fee + the router's own execution |
+| `submitArticle` — first leaf (cold slots) | relayer / writer | **127,276** | opens the batch window |
+| `submitArticle` — steady state | relayer / writer | **85,263** | 1h per-author rate limit applies |
+| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **123,923** | ≈95k fixed window/tree overhead |
+| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **672,793** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
+| `verifyAgainstBatch` — 10-leaf root | reader | **12,008** | an `eth_call` costs you nothing |
+| `notarize` — our side (K-gated) | keeper | **36,025** | + CCIP fee + the router's own execution |
 | gateway `submitArticle` — our side | writer | **37,024** | + L1 gas + CCIP fee (router's execution on top) |
 
 Contract sizes: `ArticleAnchor` 13,058 B runtime, `SubmissionGateway` 6,070 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
-rollup's L1 data component. At 85,093 gas: 0.01 gwei ≈ 0.85 µETH, 0.1 gwei ≈
+rollup's L1 data component. At 85,263 gas: 0.01 gwei ≈ 0.85 µETH, 0.1 gwei ≈
 8.5 µETH — i.e. **fractions of a cent to a few cents per article** at an ETH
 price of $3k, before the (small, calldata-based) rollup data fee. Numbers are
 examples, not promises: prices move, and the two CCIP rows above are *our*
@@ -177,14 +184,15 @@ affordable where per-article onchain storage would not be.
 
 ## Attack matrix ↔ tests
 
-49 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
+55 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
 
 | # | Threat | Defense | Test(s) |
 |---|---|---|---|
 | 1 | Publish under someone else's name | digest re-derived from payload, then EIP-712 recovery must equal `payload.author` | `Submit.t.sol::test_forgedByAuthorSigReverts`, `ArticleLib.t.sol::test_forgedByAuthorSigReverts` |
 | 2 | Tamper payload after signing | `keccak256(abi.encode(payload)) == leaf` | `Submit.t.sol::test_digestMismatchReverts`, `Gateway.t.sol::test_gatewayDigestMismatchReverts` |
 | 3 | Signature malleability (high-`s` twin of a valid sig) | explicit low-`s` gate — Solady's `recover` deliberately does **not** check | `Submit.t.sol::test_lowSEnforced` |
-| 4 | Reuse one signed payload | `usedUuid` | `Submit.t.sol::test_duplicateUuidReverts` |
+| 4 | Reuse one signed payload | `usedUuid` keyed by `(author, uuid)` | `Submit.t.sol::test_duplicateUuidReverts` |
+| 4b | **Squat a victim's predictable uuid** with your own payload to block their article | dedup is author-scoped, so a foreign author's uuid never collides | `Submit.t.sol::test_uuidSquatDoesNotBlockVictim`, `test_sameAuthorSameUuidStillDeduped` |
 | 5 | Reuse it across lanes (direct **and** gateway-CCIP) | same `uuid` check sees both lanes | `CCIP.t.sol::test_replayAcrossLanesReverts` |
 | 6 | Replay on another hub instance or another chain | EIP-712 domain `(chainId, verifyingContract)` | `Submit.t.sol::test_payloadSignedForAnotherDomainReverts` |
 | 7 | Bypass the router to inject into `consumeSubmittedArticle` | `msg.sender == router` | `CCIP.t.sol::test_directConsumeRejected` |
@@ -195,10 +203,11 @@ affordable where per-article onchain storage would not be.
 | 12 | Alter an anchored root by appending later | range freeze on `[start, end)` | `Batch.t.sol::test_rangeFreezeAfterAppend` *(Review Focus 5)* |
 | 13 | Grief batches (early/late/empty closes) | `MIN_BATCH`/`MAX_BATCH`/`BATCH_DEADLINE`/`pending > 0` | `Batch.t.sol::test_anchorRequiresMinOrDeadline`, `Batch.t.sol::test_anchorAtMaxBatch`, `Batch.t.sol::test_emptyAnchorReverts` |
 | 14 | Forge, skip or reorder L1 notarized roots | router gate + `batchIndex == nextBatch` | `Gateway.t.sol::test_receiveRootMonotonicPrevRoot`, `Gateway.t.sol::test_receiveRootDirectCallReverts`, `Gateway.t.sol::test_receiveRootWrongSourceReverts` |
+| 14b | Deliver bytes the hub never produced (wrong length / wrong function selector) so the decoder reinterprets them as `(batchIndex, root)` | payload is `abi.encodeCall(receiveRoot, …)`; length **and** selector checked before decoding — proven by a hub-encode → gateway-decode round trip | `Gateway.t.sol::test_notarizeRoundTripIntoGateway`, `test_receiveRootRejectsWrongWireFormat` |
 | 15 | Prove a leaf that isn't in the batch (or is from another batch) | `MerkleProofLib` against the frozen root | `Batch.t.sol::test_verifyAgainstBatchFalse`, `Batch.t.sol::test_verifyAgainstBatchTrue` |
 | 16 | Merkle builder/verifier disagree (implementation bug) | differential vs hand-written `NaiveMerkle` + fuzz | `MerkleDifferential.t.sol::test_matchesNaiveReference` (256 runs), `test_oddLeafCounts`, `test_singleLeafRoot` |
 | 17 | Upgrade by anyone / keep a factory-held upgrade key | `_authorizeUpgrade` admin-only; factory admin recorded as `address(0)` | `Upgrade.t.sol::test_nonAdminUpgradeReverts`, `Upgrade.t.sol::test_factoryAdminDisabled` |
-| 18 | Re-initialize, hijack gateway wiring, corrupt storage on upgrade | `initialize` guard, `setGateway` admin-only, append-only layout | `Upgrade.t.sol::test_initializeTwiceReverts`, `test_setGatewayOnlyAdmin`, `test_journalPreservedAcrossUpgrade` |
+| 18 | Re-initialize (proxy *or* bare implementation), hijack gateway wiring, corrupt storage on upgrade | `_initialized` lock + zero-admin rejection, `setGateway` admin-only, append-only layout | `Upgrade.t.sol::test_initializeTwiceReverts`, `test_bareImplementationCannotBeInitialized`, `test_initializeRejectsZeroAdmin`, `test_setGatewayOnlyAdmin`, `test_journalPreservedAcrossUpgrade` |
 | 19 | Spam one author's journal | `RATE_LIMIT = 1h` | `Submit.t.sol::test_rateLimit1hReverts` |
 | 20 | Submit an expired article | `block.timestamp ≤ deadline`, checked first on both lanes | `Submit.t.sol::test_expiredDeadlineReverts` |
 | 21 | Run off with / overcharge the gateway fee | `getFee` quote, `msg.value ≥ fee`, refund excess, gateway retains 0 | `Gateway.t.sol::test_insufficientFeeReverts`, `test_excessRefunded` |
@@ -238,12 +247,24 @@ all-in on Solidity is a deliberate constraint with three payoffs:
    code would be scarcest — the Merkle tree — is checked by
    `test/MerkleDifferential.t.sol`, which pits Solady's optimized assembly
    `MerkleTreeLib` against `test/lib/NaiveMerkle.sol`, an independent,
-   assembly-free reimplementation of the exact heap layout (`leaf k` at
-   `2L-2+k`… children `2i+1`/`2i+2`, odd node promoted raw), across fuzzed
-   leaf counts, odd counts and single leaves. A JS harness could also
+   assembly-free reimplementation of the exact heap layout (leaf `k` sits at
+   `2L-2-k`; node `i` is the pair-sorted hash of children `2i+1`/`2i+2`, so a
+   leftover leaf ends up paired with an *internal* node instead of being
+   promoted a level), across fuzzed leaf counts up to `MAX_BATCH`, odd counts
+   and single leaves. A JS harness could also
    cross-check roots — but it would run *outside* the EVM, catching encoding
    mistakes rather than semantic ones, and would drag an npm tree into a repo
    whose whole point is that it has none.
+4. **The shape assumption is disclosed, not hidden.** Solady's `build` lays
+   nodes out as a heap, which is *not* the textbook level-wise tree (they
+   diverge at 5 leaves) — so `NaiveMerkle` implements Solady's layout rather
+   than its own convention. Honest residual: the differential therefore checks
+   that Solady's **assembly** computes the documented **layout** correctly, it
+   does not independently re-derive the layout choice. It also means any proof
+   generator must use the same convention: a textbook level-wise builder
+   produces a different root for the same leaves. Both facts are why the
+   differential exists in the first place — and why `NaiveMerkle` stays
+   assembly-free and separately written.
 3. **End-to-end without a frontend.** `forge script` signs with the same
    EIP-712 math the tests use (`E2ESubmit.s.sol` reads the hub's EIP-5267
    domain and derives the digest in Solidity), and `cast` does the
@@ -321,8 +342,13 @@ and therefore control the journal. Mitigations in place, all tested:
   (`test_factoryAdminDisabled`). `upgradeToAndCall` gated by
   `_authorizeUpgrade` (admin-only, `test_nonAdminUpgradeReverts`) is the only
   way up.
-- **`initialize` runs exactly once** (`test_initializeTwiceReverts`), and
-  **storage survives upgrades** (`test_journalPreservedAcrossUpgrade`).
+- **`initialize` runs exactly once** (`test_initializeTwiceReverts`) — an
+  explicit `_initialized` flag set both by the constructor (so the *bare
+  implementation*, which ships with `admin = 0`, can never be initialized by a
+  stranger: `test_bareImplementationCannotBeInitialized`) and by the first
+  `initialize` call on the proxy — which also rejects `admin_ = address(0)`
+  (`test_initializeRejectsZeroAdmin`). **Storage survives upgrades**
+  (`test_journalPreservedAcrossUpgrade`).
 - **`admin` is written exactly twice** — constructor or `initialize` — and
   has **no transfer function**. It cannot be rotated after deployment. That is
   a deliberate trade: no transfer means no transfer-hijack, and the price is
@@ -359,7 +385,7 @@ EIP-712 typed digest — both are checked, so a payload cannot be reinterpreted.
 the protocol has no treasury to pay from (that is what "no fees" means).
 Consequence: if nobody runs the keepers, writes are unaffected — articles keep
 journaling — but batches do not freeze and the L1 record lags. The scripts are
-one command each and cost ~100k gas (anchor) and ~24k gas + one CCIP fee
+one command each and cost ≈124k gas (anchor) and ≈36k gas + one CCIP fee
 (notarize); any author, reader or competitor can run them, which is the point
 of permissionlessness. What it does not buy is *guaranteed* cadence. A future
 bounty or an operator cron is the honest fix; the current design optimizes for
@@ -371,8 +397,10 @@ Chainlink CCIP is trusted for liveness of both lanes and, for the notary
 record, for authenticity. Message fees are Chainlink's; the receiver gas limits
 (`NOTARY_GAS_LIMIT = 200k`, `SUBMIT_GAS_LIMIT = 400k`) are set to the upstream
 default and generous headroom respectively, and must be calibrated on a real
-testnet before a real lane. The vendored interfaces are a **minimal subset** —
-re-verify them against current upstream when you deploy.
+testnet before a real lane. The vendored interfaces are a **minimal subset**, taken from
+`smartcontractkit/ccip` at commit `171f9f0` (the `ccip-develop` head at
+vendoring time; struct layouts and signatures re-checked against that
+commit) — re-verify them against current upstream when you deploy.
 
 ---
 

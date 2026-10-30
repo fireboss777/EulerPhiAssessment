@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {ArticleAnchor} from "../src/ArticleAnchor.sol";
 import {ArticleSubmission} from "../src/ArticleLib.sol";
 import {Client} from "../src/interfaces/Client.sol";
+import {ISubmissionGateway} from "../src/interfaces/ISubmissionGateway.sol";
 import {SubmissionGateway} from "../src/SubmissionGateway.sol";
 import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
 import {MockRouter} from "./mocks/MockRouter.sol";
@@ -30,6 +31,9 @@ contract GatewayTest is ArticleTestBase {
         sig = abi.encodePacked(bytes32(uint256(0xAA)), bytes32(uint256(0xBB)), uint8(27));
     }
 
+    /// @dev Production wire format: the hub sends `abi.encodeCall` of
+    /// `receiveRoot` — fixtures must use the SAME encoding as the contract,
+    /// otherwise the tests validate a payload nobody produces.
     function _rootMsg(uint64 sel, address sender, uint256 batchIndex, bytes32 root)
         internal
         pure
@@ -39,7 +43,7 @@ contract GatewayTest is ArticleTestBase {
             messageId: keccak256(abi.encode(batchIndex, root)),
             sourceChainSelector: sel,
             sender: abi.encode(sender),
-            data: abi.encode(batchIndex, root),
+            data: abi.encodeCall(ISubmissionGateway.receiveRoot, (batchIndex, root)),
             destTokenAmounts: new Client.EVMTokenAmount[](0)
         });
     }
@@ -164,5 +168,48 @@ contract GatewayTest is ArticleTestBase {
 
         assertEq(hub.journalLength(), 1, "payload journaled via gateway lane");
         assertEq(hub.journal(0), leaf, "leaf roundtrip through both contracts");
+    }
+
+    // ------------------------------------------------------------------
+    // Wire-format round trip: hub notarize encode -> (router) -> gateway decode.
+    // Send-side assertions alone cannot see a decoder mismatch — they check
+    // the payload against the very interface the sender used.
+    // ------------------------------------------------------------------
+
+    function test_notarizeRoundTripIntoGateway() public {
+        ArticleAnchor hub = new ArticleAnchor(address(this), address(mock), BASE_SEL, address(0x9999));
+        SubmissionGateway gw2 = new SubmissionGateway(address(mock), address(hub), BASE_SEL);
+        seedBatch(hub, 10);
+        hub.anchorNextBatch();
+        vm.roll(hub.anchoredAtBlock(0) + hub.NOTARY_K());
+        vm.deal(address(this), 1 ether);
+
+        hub.notarize{value: mock.fee()}(0); // hub-side encode (encodeCall)
+
+        Client.Any2EVMMessage memory delivered = Client.Any2EVMMessage({
+            messageId: mock.lastMessageId(),
+            sourceChainSelector: BASE_SEL,
+            sender: abi.encode(address(hub)),
+            data: mock.lastData(), // exactly the bytes the hub produced
+            destTokenAmounts: new Client.EVMTokenAmount[](0)
+        });
+        mock.deliverViaCcipReceive(address(gw2), delivered);
+
+        assertEq(gw2.notarizedRoot(0), hub.rootAt(0), "root roundtrip through both contracts");
+        assertEq(gw2.nextBatch(), 1, "cursor advanced");
+    }
+
+    function test_receiveRootRejectsWrongWireFormat() public {
+        bytes32 root = keccak256("r0");
+
+        Client.Any2EVMMessage memory noSelector = _rootMsg(BASE_SEL, HUB, 0, root);
+        noSelector.data = abi.encode(0, root); // 64-byte tuple: no selector
+        vm.expectRevert("bad len");
+        mock.deliverViaCcipReceive(address(gw), noSelector);
+
+        Client.Any2EVMMessage memory wrongSelector = _rootMsg(BASE_SEL, HUB, 0, root);
+        wrongSelector.data = abi.encodePacked(hex"deadbeef", abi.encode(0, root));
+        vm.expectRevert("bad selector");
+        mock.deliverViaCcipReceive(address(gw), wrongSelector);
     }
 }

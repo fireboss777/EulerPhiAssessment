@@ -132,4 +132,40 @@ contract SubmitTest is ArticleTestBase {
         vm.expectRevert("not author");
         hub.submitArticle(leaf, foreignChainSig, p);
     }
+
+    /// @dev The uuid dedup must be scoped to the author: otherwise anyone can
+    /// squat a victim's predictable uuid (e.g. keccak(content)) with their own
+    /// payload and permanently block the victim's real article.
+    function test_uuidSquatDoesNotBlockVictim() public {
+        ArticleAnchor hub = deployHub();
+        bytes32 predicted = keccak256("predictable content id");
+
+        ArticleSubmission memory squat = payloadFor(vm.addr(FORGER_KEY), 21);
+        squat.uuid = predicted;
+        submitAs(hub, squat, FORGER_KEY); // attacker front-runs the uuid
+
+        ArticleSubmission memory victim = payloadFor(vm.addr(AUTHOR_KEY), 22);
+        victim.uuid = predicted;
+        submitAs(hub, victim, AUTHOR_KEY); // must NOT revert "dup"
+
+        assertEq(hub.journalLength(), 2, "both authors journaled");
+    }
+
+    /// @dev Same author, same uuid, any lane: still exactly once.
+    function test_sameAuthorSameUuidStillDeduped() public {
+        ArticleAnchor hub = deployHub();
+        address author = vm.addr(AUTHOR_KEY);
+
+        ArticleSubmission memory p = payloadFor(author, 23);
+        p.uuid = keccak256("one shot");
+        submitAs(hub, p, AUTHOR_KEY);
+        vm.warp(block.timestamp + 1 hours);
+
+        ArticleSubmission memory twin = payloadFor(author, 24);
+        twin.uuid = keccak256("one shot"); // same uuid, different content
+        bytes memory sig = signArticle(hub, twin, AUTHOR_KEY);
+
+        vm.expectRevert(bytes("dup"));
+        hub.submitArticle(leafOf(twin), sig, twin);
+    }
 }

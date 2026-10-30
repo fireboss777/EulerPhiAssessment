@@ -17,7 +17,7 @@ contract MerkleDifferentialTest is Test {
     }
 
     function test_matchesNaiveReference(uint256 s, uint8 n) public view {
-        uint256 count = bound(uint256(n), 1, 64);
+        uint256 count = bound(uint256(n), 1, 200); // cover up to MAX_BATCH
         bytes32[] memory leaves = _leaves(s, count);
 
         bytes32 soladyRoot = MerkleTreeLib.root(MerkleTreeLib.build(leaves));
