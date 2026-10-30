@@ -71,6 +71,22 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
         gateway = gateway_;
     }
 
+    /// @notice Proxy initializer — constructors don't run behind ERC1967
+    /// proxies. Guarded by `admin == 0` (fresh proxy storage only; the direct-
+    /// deploy constructor sets admin, so the implementation can't be re-inited).
+    function initialize(address admin_, address router_, uint64 chainSelector_) external {
+        require(admin == address(0), "initialized");
+        admin = admin_;
+        router = router_;
+        ethChainSelector = chainSelector_;
+    }
+
+    /// @notice Post-deploy wiring: the L1 gateway address is known only after
+    /// the gateway contract exists (deploy order: hub -> gateway -> setGateway).
+    function setGateway(address gateway_) external onlyAdmin {
+        gateway = gateway_;
+    }
+
     // ---------------------------------------------------------------------
     // EIP-712 / UUPS wiring
     // ---------------------------------------------------------------------
