@@ -126,6 +126,13 @@ contract GatewayTest is ArticleTestBase {
         mock.deliverViaCcipReceive(address(gw), _rootMsg(BASE_SEL, FOREIGN, 0, keccak256("r")));
     }
 
+    /// @dev `receiveRoot` is public (plan-named API) but router-gated inside:
+    /// a direct caller — even with a perfectly ordered batch — dies at the gate.
+    function test_receiveRootDirectCallReverts() public {
+        vm.expectRevert("not router");
+        gw.receiveRoot(0, keccak256("r0"));
+    }
+
     // ------------------------------------------------------------------
     // Wire-format round trip: gateway encode -> (router) -> hub decode.
     // The gateway never verifies signatures, so this proves the two sides

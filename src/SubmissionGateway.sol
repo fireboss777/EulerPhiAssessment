@@ -42,11 +42,10 @@ contract SubmissionGateway is IAny2EVMMessageReceiver {
     // Paid entry lane: Ethereum -> hub
     // ------------------------------------------------------------------
 
-    function submitArticle(
-        bytes32 leafDigest,
-        bytes calldata sig,
-        ArticleSubmission calldata payload
-    ) external payable {
+    function submitArticle(bytes32 leafDigest, bytes calldata sig, ArticleSubmission calldata payload)
+        external
+        payable
+    {
         // Cheap, chain-agnostic sanity checks before any fee moves:
         require(block.timestamp <= payload.deadline, "expired");
         require(keccak256(abi.encode(payload)) == leafDigest, "digest mismatch");

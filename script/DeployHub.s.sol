@@ -22,9 +22,7 @@ contract DeployHub is Script {
         ArticleAnchor impl = new ArticleAnchor(address(0), address(0), 0, address(0));
         ERC1967Factory factory = new ERC1967Factory();
         proxy = factory.deployAndCall(
-            address(impl),
-            address(0),
-            abi.encodeCall(ArticleAnchor.initialize, (admin, router, selector))
+            address(impl), address(0), abi.encodeCall(ArticleAnchor.initialize, (admin, router, selector))
         );
         vm.stopBroadcast();
         console.log("HUB_PROXY", proxy);

@@ -100,6 +100,17 @@ contract CCIPTest is ArticleTestBase {
         assertEq(hub.journalLength(), 1, "ccipReceive forwards to consume");
     }
 
+    /// @dev The pin has three legs; `msg.sender == router` is the first and
+    /// the only one a direct (non-CCIP) caller faces. Bypassing the router
+    /// must die here even with a perfectly valid chain/sender tuple.
+    function test_directConsumeRejected() public {
+        (bytes32 leaf, bytes memory sig, ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 6);
+        Client.Any2EVMMessage memory m = _inbound(TEST_SEL, GATEWAY, leaf, sig, p);
+
+        vm.expectRevert("not router");
+        hub.consumeSubmittedArticle(m);
+    }
+
     // ------------------------------------------------------------------
     // Outbound notarization (hub -> L1 gateway), K-confirmation gate
     // ------------------------------------------------------------------
@@ -131,9 +142,7 @@ contract CCIPTest is ArticleTestBase {
         assertEq(mock.lastReceiver(), GATEWAY, "receiver = gateway");
         assertEq(mock.lastValue(), 0.02 ether, "fee value forwarded");
         assertEq(
-            mock.lastData(),
-            abi.encodeCall(ISubmissionGateway.receiveRoot, (0, root)),
-            "payload = (batchIndex, root)"
+            mock.lastData(), abi.encodeCall(ISubmissionGateway.receiveRoot, (0, root)), "payload = (batchIndex, root)"
         );
         assertGt(mock.lastExtraArgs().length, 0, "gas limit extraArgs attached");
     }

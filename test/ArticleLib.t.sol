@@ -15,10 +15,8 @@ contract AuthorGate {
 
 contract ArticleLibTest is Test {
     /// @dev Independent pins from `cast keccak` + `cast abi-encode` (see Task 1 brief).
-    bytes32 internal constant TYPEHASH_PIN =
-        0xb7a5cafa749837922201f262a702dcc1b0da047ce6107c03390180d257799845;
-    bytes32 internal constant HASHSTRUCT_PIN =
-        0x15faf34648bb978be8e781da13f243f411b5e8f5d815e7bf5eaa98763aed0adb;
+    bytes32 internal constant TYPEHASH_PIN = 0xb7a5cafa749837922201f262a702dcc1b0da047ce6107c03390180d257799845;
+    bytes32 internal constant HASHSTRUCT_PIN = 0x15faf34648bb978be8e781da13f243f411b5e8f5d815e7bf5eaa98763aed0adb;
 
     address internal constant AUTHOR = 0x1111111111111111111111111111111111111111;
     uint256 internal constant FORGER_KEY = 0xA11CE;

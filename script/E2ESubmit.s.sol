@@ -39,17 +39,14 @@ contract E2ESubmit is Script {
             IEIP5267S(address(hub)).eip712Domain();
         bytes32 ds = keccak256(
             abi.encode(
-                keccak256(
-                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-                ),
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
                 keccak256(bytes(name)),
                 keccak256(bytes(ver)),
                 chainId,
                 vc
             )
         );
-        bytes32 digest =
-            keccak256(abi.encodePacked(hex"1901", ds, ArticleLib.hashStruct(p)));
+        bytes32 digest = keccak256(abi.encodePacked(hex"1901", ds, ArticleLib.hashStruct(p)));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(authorKey, digest);
 
         vm.startBroadcast(authorKey);

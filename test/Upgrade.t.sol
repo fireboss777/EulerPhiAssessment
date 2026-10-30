@@ -18,9 +18,7 @@ contract UpgradeTest is ArticleTestBase {
         ArticleAnchor impl = new ArticleAnchor(address(0), address(0), 0, address(0));
         factory = new ERC1967Factory();
         address proxy = factory.deployAndCall(
-            address(impl),
-            address(0),
-            abi.encodeCall(ArticleAnchor.initialize, (admin_, router_, chainSelector_))
+            address(impl), address(0), abi.encodeCall(ArticleAnchor.initialize, (admin_, router_, chainSelector_))
         );
         hub = ArticleAnchor(proxy);
     }
@@ -49,9 +47,7 @@ contract UpgradeTest is ArticleTestBase {
         assertEq(hub.journal(1), leaf1, "leaf1 survived");
         assertEq(hub.journal(2), leaf2, "leaf2 survived");
         assertEq(hub.admin(), address(this), "admin survived");
-        assertEq(
-            ArticleAnchorV2Stub(address(hub)).v2Ping(), 42, "new implementation logic live"
-        );
+        assertEq(ArticleAnchorV2Stub(address(hub)).v2Ping(), 42, "new implementation logic live");
     }
 
     function test_factoryAdminDisabled() public {

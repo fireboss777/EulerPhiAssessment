@@ -110,4 +110,26 @@ contract SubmitTest is ArticleTestBase {
         vm.expectRevert("not author");
         hub.submitArticle(leafOf(p), forged, p);
     }
+
+    /// @dev EIP-712 domain binding: a payload signed for another verifying
+    /// contract or another chain cannot authorize a submit on this hub —
+    /// the digest differs, so recovery yields a different address.
+    function test_payloadSignedForAnotherDomainReverts() public {
+        ArticleAnchor hub = deployHub();
+        ArticleAnchor otherHub = deployHub();
+        ArticleSubmission memory p = payloadFor(vm.addr(AUTHOR_KEY), 10);
+        bytes32 leaf = leafOf(p);
+
+        bytes memory foreignContractSig = signArticle(otherHub, p, AUTHOR_KEY);
+        vm.expectRevert("not author");
+        hub.submitArticle(leaf, foreignContractSig, p);
+
+        uint256 originalChainId = block.chainid;
+        vm.chainId(originalChainId + 1);
+        bytes memory foreignChainSig = signArticle(hub, p, AUTHOR_KEY);
+        vm.chainId(originalChainId);
+
+        vm.expectRevert("not author");
+        hub.submitArticle(leaf, foreignChainSig, p);
+    }
 }

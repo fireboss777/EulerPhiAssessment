@@ -58,13 +58,10 @@ abstract contract ArticleTestBase is Test {
 
     /// @dev Domain separator reconstructed from the contract's own EIP-5267 answer.
     function articleDigest(address target, ArticleSubmission memory p) internal view returns (bytes32) {
-        (, string memory name, string memory version, uint256 chainId, address vc,,) =
-            IEIP5267(target).eip712Domain();
+        (, string memory name, string memory version, uint256 chainId, address vc,,) = IEIP5267(target).eip712Domain();
         bytes32 ds = keccak256(
             abi.encode(
-                keccak256(
-                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-                ),
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
                 keccak256(bytes(name)),
                 keccak256(bytes(version)),
                 chainId,
@@ -108,8 +105,7 @@ abstract contract ArticleTestBase is Test {
     /// warps needed; rate is per-author).
     function seedBatch(ArticleAnchor hub, uint256 n) internal {
         for (uint256 i; i < n; ++i) {
-            uint256 key = uint256(keccak256(abi.encode("author", i, uuidNonce)))
-                % (ECDSA.N - 1) + 1;
+            uint256 key = uint256(keccak256(abi.encode("author", i, uuidNonce))) % (ECDSA.N - 1) + 1;
             submitAs(hub, payloadFor(vm.addr(key), i), key);
         }
     }

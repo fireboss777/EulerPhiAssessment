@@ -32,8 +32,7 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
     /// @notice Receiver-side gas limit attached to the CCIP notary message.
     uint256 public constant NOTARY_GAS_LIMIT = 200_000;
     /// @dev floor(N/2) of secp256k1: signatures must be canonical low-s (EIP-2).
-    uint256 private constant _HIGH_S_MAX =
-        0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
+    uint256 private constant _HIGH_S_MAX = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
 
     // ---------------------------------------------------------------------
     // Configuration (storage, never immutables: proxy-safe)
@@ -105,15 +104,11 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
 
     /// @notice Publish a signed article. Caller pays gas; may be anyone —
     /// authorship comes exclusively from `payload`'s EIP-712 signature.
-    function submitArticle(bytes32 leafDigest, bytes calldata sig, ArticleSubmission calldata payload)
-        external
-    {
+    function submitArticle(bytes32 leafDigest, bytes calldata sig, ArticleSubmission calldata payload) external {
         _submit(leafDigest, sig, payload);
     }
 
-    function _submit(bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload)
-        internal
-    {
+    function _submit(bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload) internal {
         require(block.timestamp <= payload.deadline, "expired");
         require(keccak256(abi.encode(payload)) == leafDigest, "digest mismatch");
         // Canonical 65-byte (r, s, v) only; low-s enforced (Solady's recover
@@ -189,8 +184,7 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
         uint256 start = lastAnchoredIndex;
         uint256 pending = journal.length - start;
         require(
-            pending > 0
-                && (pending >= MIN_BATCH || block.timestamp >= batchOpenedAt + BATCH_DEADLINE),
+            pending > 0 && (pending >= MIN_BATCH || block.timestamp >= batchOpenedAt + BATCH_DEADLINE),
             "batch not ready"
         );
 

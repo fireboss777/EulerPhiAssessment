@@ -16,8 +16,7 @@ contract Anchor is Script {
 
         uint256 pending = hub.pendingLeaves();
         uint256 opened = hub.batchOpenedAt();
-        bool ready = pending > 0
-            && (pending >= hub.MIN_BATCH() || block.timestamp >= opened + hub.BATCH_DEADLINE());
+        bool ready = pending > 0 && (pending >= hub.MIN_BATCH() || block.timestamp >= opened + hub.BATCH_DEADLINE());
 
         if (!ready) {
             console.log("noop: batch not ready; pending =", pending);

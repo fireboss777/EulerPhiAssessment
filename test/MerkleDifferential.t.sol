@@ -39,10 +39,7 @@ contract MerkleDifferentialTest is Test {
             bytes32[] memory tree = MerkleTreeLib.build(leaves);
             for (uint256 i; i < leaves.length; ++i) {
                 bytes32[] memory proof = MerkleTreeLib.leafProof(tree, i);
-                assertTrue(
-                    MerkleProofLib.verify(proof, soladyRoot, leaves[i]),
-                    "odd-count proof invalid"
-                );
+                assertTrue(MerkleProofLib.verify(proof, soladyRoot, leaves[i]), "odd-count proof invalid");
             }
         }
     }
