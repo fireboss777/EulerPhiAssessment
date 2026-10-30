@@ -458,7 +458,14 @@ src/
   ArticleAnchor.sol        hub: submit, journal, batching, roots, CCIP both ways, UUPS
   SubmissionGateway.sol    L1: payable entry lane (no ecrecover) + monotonic notary receiver
   ArticleLib.sol           EIP-712 struct + typehash
-  interfaces/              vendored CCIP subset (Client, IRouterClient, IAny2EVMMessageReceiver), ISubmissionGateway
+  interfaces/
+    IArticleAnchor.sol     hub's full public ABI (functions, getters, constants, events)
+                           + every API NatSpec — ArticleAnchor inherits it, so the
+                           compiler keeps docs and ABI in lockstep
+    ISubmissionGateway.sol same for SubmissionGateway (it also fixes the 68-byte
+                           `receiveRoot` wire format the hub encodes against)
+    Client.sol, IRouterClient.sol, IAny2EVMMessageReceiver.sol
+                           vendored CCIP subset @ commit 171f9f0
 script/
   DeployHub.s.sol DeployGateway.s.sol     deployment (single upgrade path)
   Anchor.s.sol Notarize.s.sol             permissionless keeper loops

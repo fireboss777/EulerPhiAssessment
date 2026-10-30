@@ -8,30 +8,19 @@ import {ISubmissionGateway} from "./interfaces/ISubmissionGateway.sol";
 import {IAny2EVMMessageReceiver} from "./interfaces/IAny2EVMMessageReceiver.sol";
 
 /// @title SubmissionGateway — the L1 endpoint (two roles, both pinned).
-/// @notice 1. Paid entry lane: `submitArticle` mirrors the hub's API plus
-/// `payable` — the caller funds L1 execution + the CCIP fee for the L2 leg,
-/// and one Ethereum transaction lands the payload in the hub's journal.
-/// Deliberately performs NO signature checks (decision 1a): EIP-712 domains
-/// are chain-bound, so the hub is the single signature authority — garbage
-/// messages are priced by the attached fee instead of rejected by ecrecover.
-/// @notice 2. Notary receiver: roots notarized upward by the hub arrive via
-/// CCIP, pinned to (router, baseChainSelector, hub) and applied strictly in
-/// batch order — the audit-grade "original tree" record on Ethereum.
-contract SubmissionGateway is IAny2EVMMessageReceiver {
-    /// @notice Hub-side calldata for a journaled submission is small; 400k
-    /// covers digest+sig checks + journal SSTORE with generous headroom.
+/// @notice Every external entry point, getter, constant and event is declared
+/// and documented on `ISubmissionGateway`, which this contract inherits — read
+/// the interface for the API (including the paid-lane / no-ecrecover design
+/// notes). Only implementation-side members are documented here.
+contract SubmissionGateway is IAny2EVMMessageReceiver, ISubmissionGateway {
     uint256 public constant SUBMIT_GAS_LIMIT = 400_000;
 
     address public immutable router;
     address public immutable hub;
     uint64 public immutable baseChainSelector;
 
-    /// @notice Next batch index acceptable — no skips, no reordering, no replays.
     uint256 public nextBatch;
     mapping(uint256 => bytes32) public notarizedRoot;
-
-    event SubmittedOnL1(address indexed submitter, bytes32 indexed leafDigest, bytes32 messageId);
-    event RootNotarized(uint256 indexed batchIndex, bytes32 root);
 
     constructor(address router_, address hub_, uint64 baseChainSelector_) {
         router = router_;
@@ -77,8 +66,13 @@ contract SubmissionGateway is IAny2EVMMessageReceiver {
     // Notary receiver: hub -> gateway (roots land here)
     // ------------------------------------------------------------------
 
-    /// @notice Standard router entry — context-gates, then applies.
-    function ccipReceive(Client.Any2EVMMessage calldata message) external {
+    /// @dev Inherits its documentation from `ISubmissionGateway`, which
+    /// redeclares it alongside Chainlink's `IAny2EVMMessageReceiver` — hence
+    /// the explicit override list.
+    function ccipReceive(Client.Any2EVMMessage calldata message)
+        external
+        override(IAny2EVMMessageReceiver, ISubmissionGateway)
+    {
         require(message.sourceChainSelector == baseChainSelector, "bad chain");
         require(abi.decode(message.sender, (address)) == hub, "bad sender");
         _applyNotaryPayload(message.data);
@@ -96,9 +90,6 @@ contract SubmissionGateway is IAny2EVMMessageReceiver {
         receiveRoot(batchIndex, root);
     }
 
-    /// @notice Applies a notarized root. Router-gated (any direct caller fails
-    /// the `not router` check — msg.sender survives the ccipReceive hop) and
-    /// strictly sequential: batchIndex must equal `nextBatch`.
     function receiveRoot(uint256 batchIndex, bytes32 root) public {
         require(msg.sender == address(router), "not router");
         require(batchIndex == nextBatch, "out of order");

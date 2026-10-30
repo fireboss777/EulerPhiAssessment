@@ -2,12 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {Client} from "../../src/interfaces/Client.sol";
-
-interface IHubCCIP {
-    function consumeSubmittedArticle(Client.Any2EVMMessage calldata message) external;
-
-    function ccipReceive(Client.Any2EVMMessage calldata message) external;
-}
+import {IArticleAnchor} from "../../src/interfaces/IArticleAnchor.sol";
 
 /// @notice Test double for Chainlink's Router: captures ccipSend calls and
 /// fakes ccipReceive-side deliveries. Mirrors upstream quirks worth keeping:
@@ -56,10 +51,10 @@ contract MockRouter {
     // ------------------------------------------------------------------
 
     function deliver(address hub, Client.Any2EVMMessage calldata message) external {
-        IHubCCIP(hub).consumeSubmittedArticle(message);
+        IArticleAnchor(hub).consumeSubmittedArticle(message);
     }
 
     function deliverViaCcipReceive(address hub, Client.Any2EVMMessage calldata message) external {
-        IHubCCIP(hub).ccipReceive(message);
+        IArticleAnchor(hub).ccipReceive(message);
     }
 }

@@ -10,16 +10,14 @@ import {ArticleLib, ArticleSubmission} from "./ArticleLib.sol";
 import {Client} from "./interfaces/Client.sol";
 import {IRouterClient} from "./interfaces/IRouterClient.sol";
 import {ISubmissionGateway} from "./interfaces/ISubmissionGateway.sol";
+import {IArticleAnchor} from "./interfaces/IArticleAnchor.sol";
 
 /// @title ArticleAnchor — the canonical journal & batch root registry (hub).
-/// @notice Authors sign `ArticleSubmission` payloads (EIP-712); anyone may
-/// relay them on-chain. Leaves accumulate in an append-only journal; anyone
-/// closes a batch, which builds the Merkle root *inside the contract* and
-/// freezes it — anchors take no root input, so no malicious root can exist.
-/// @dev v1 is deliberately role-free. Extension points (not implemented):
-///  - role-gated publishing: gate `_submit` on an `isAuthor[author]` registry;
-///  - meta-tx sponsorship: wrap `submitArticle` behind a forwarder.
-contract ArticleAnchor is EIP712, UUPSUpgradeable {
+/// @notice Every external entry point, getter, constant and event is declared
+/// and documented on `IArticleAnchor`, which this contract inherits — read the
+/// interface for the API. Only implementation-side members (constructor,
+/// modifiers, `internal` helpers) are documented here.
+contract ArticleAnchor is EIP712, UUPSUpgradeable, IArticleAnchor {
     // ---------------------------------------------------------------------
     // Constants (see plan: batch policy)
     // ---------------------------------------------------------------------
@@ -27,9 +25,7 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
     uint256 public constant MAX_BATCH = 200;
     uint256 public constant BATCH_DEADLINE = 6 hours;
     uint256 public constant RATE_LIMIT = 60 minutes;
-    /// @notice L2 block confirmations required before a root may be notarized upward.
     uint256 public constant NOTARY_K = 64;
-    /// @notice Receiver-side gas limit attached to the CCIP notary message.
     uint256 public constant NOTARY_GAS_LIMIT = 200_000;
     /// @dev floor(N/2) of secp256k1: signatures must be canonical low-s (EIP-2).
     uint256 private constant _HIGH_S_MAX = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
@@ -46,8 +42,6 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
     // Journal & batch state
     // ---------------------------------------------------------------------
     bytes32[] public journal;
-    /// @notice Dedup key is (author, uuid): an attacker must not be able to
-    /// squat a victim's predictable uuid with a payload of their own.
     mapping(address => mapping(bytes32 => bool)) public usedUuid;
     mapping(address => uint256) public lastSubmit;
     uint256 public batchOpenedAt;
@@ -59,10 +53,6 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
     /// Set in the constructor too: the bare implementation — which ships with
     /// `admin = address(0)` — must not be initializable by anyone.
     bool private _initialized;
-
-    event Submitted(address indexed author, address indexed submitter, bytes32 leafDigest);
-    event RootAnchored(uint256 indexed batchIndex, bytes32 root, uint256 start, uint256 end);
-    event Notarized(uint256 indexed batchIndex, bytes32 root, bytes32 messageId);
 
     modifier onlyAdmin() {
         require(msg.sender == admin, "admin only");
@@ -77,10 +67,6 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
         gateway = gateway_;
     }
 
-    /// @notice Proxy initializer — constructors don't run behind ERC1967
-    /// proxies. Guarded by an explicit `_initialized` flag: the proxy starts
-    /// false (its storage is fresh), the bare implementation starts true (its
-    /// constructor ran), so this runs exactly once and on the proxy only.
     function initialize(address admin_, address router_, uint64 chainSelector_) external {
         require(!_initialized, "initialized");
         require(admin_ != address(0), "zero admin");
@@ -90,8 +76,6 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
         ethChainSelector = chainSelector_;
     }
 
-    /// @notice Post-deploy wiring: the L1 gateway address is known only after
-    /// the gateway contract exists (deploy order: hub -> gateway -> setGateway).
     function setGateway(address gateway_) external onlyAdmin {
         gateway = gateway_;
     }
@@ -112,8 +96,6 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
     // Submission
     // ---------------------------------------------------------------------
 
-    /// @notice Publish a signed article. Caller pays gas; may be anyone —
-    /// authorship comes exclusively from `payload`'s EIP-712 signature.
     function submitArticle(bytes32 leafDigest, bytes calldata sig, ArticleSubmission calldata payload) external {
         _submit(leafDigest, sig, payload);
     }
@@ -147,15 +129,10 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
     // CCIP lanes
     // ---------------------------------------------------------------------
 
-    /// @notice Standard IAny2EVMMessageReceiver entry — what a real Router
-    /// calls to deliver. Forwards into the pinned `consumeSubmittedArticle`.
     function ccipReceive(Client.Any2EVMMessage calldata message) external {
         consumeSubmittedArticle(message);
     }
 
-    /// @notice Inbound lane: signed article payloads from the pinned L1
-    /// gateway. Pinned by (router, sourceChainSelector, sender) — all three,
-    /// so a foreign router, chain, or contract cannot journal anything.
     function consumeSubmittedArticle(Client.Any2EVMMessage calldata message) public {
         require(msg.sender == address(router), "not router");
         require(message.sourceChainSelector == ethChainSelector, "bad chain");
@@ -165,9 +142,6 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
         _submit(leafDigest, sig, payload);
     }
 
-    /// @notice Notarize an anchored batch root to the L1 gateway via CCIP.
-    /// Permissionless; the caller funds the fee (`msg.value`) — keepers pay
-    /// for what they send, no protocol float to drain.
     function notarize(uint256 batchIndex) external payable {
         uint256 anchoredAt = anchoredAtBlock[batchIndex];
         require(anchoredAt != 0, "no batch");
@@ -188,8 +162,6 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
     // Batching & anchoring
     // ---------------------------------------------------------------------
 
-    /// @notice Close the current batch. Permissionless: takes NO arguments, so
-    /// the only root it can ever publish is the one computed from the journal.
     function anchorNextBatch() external returns (bytes32 root) {
         uint256 start = lastAnchoredIndex;
         uint256 pending = journal.length - start;
@@ -211,8 +183,10 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
         emit RootAnchored(batchIndex, root, start, end);
     }
 
-    /// @dev Contract-side tree build over `journal[start..end)` — Solady
-    /// semantics (pair-sorted keccak, odd node promoted raw). Kept in memory.
+    /// @dev Contract-side tree build over `journal[start..end)` in Solady's
+    /// heap layout (pair-sorted keccak; leaf k sits at 2L-2-k, node i hashes
+    /// children 2i+1/2i+2, so a leftover leaf pairs with an internal node).
+    /// Kept in memory; any off-chain prover must use the same convention.
     function _buildRoot(uint256 start, uint256 end) internal view returns (bytes32) {
         uint256 n = end - start;
         bytes32[] memory leaves = new bytes32[](n);
@@ -222,7 +196,6 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
         return MerkleTreeLib.root(MerkleTreeLib.build(leaves));
     }
 
-    /// @notice Verify a leaf against an anchored batch root (reader path).
     function verifyAgainstBatch(uint256 batchIndex, bytes32 leaf, bytes32[] calldata proof)
         external
         view
