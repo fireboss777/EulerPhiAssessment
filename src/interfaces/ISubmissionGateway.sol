@@ -27,6 +27,33 @@ import {Client} from "./Client.sol";
 /// satisfies Chainlink's `IAny2EVMMessageReceiver` for the standard entry.
 interface ISubmissionGateway {
     // ---------------------------------------------------------------------
+    // Errors (thrown by the implementation; declared here so the ABI and the
+    // docs of every failure mode live with the API they belong to)
+    // ---------------------------------------------------------------------
+
+    /// @notice The payload's `deadline` is already in the past.
+    error Expired();
+    /// @notice `leafDigest` is not `keccak256(abi.encode(payload))`.
+    error DigestMismatch();
+    /// @notice `msg.value` is below the router's quote.
+    error InsufficientFee();
+    /// @notice The excess-refund transfer to the caller failed; the whole
+    /// submission reverts (nothing is sent, the caller keeps their funds).
+    error RefundFailed();
+    /// @notice Caller is not the pinned router (`receiveRoot` gate).
+    error NotRouter();
+    /// @notice Root arrived from a chain other than the pinned selector.
+    error BadChain();
+    /// @notice Root arrived from a sender other than the pinned hub.
+    error BadSender();
+    /// @notice Notary payload is not exactly 68 bytes.
+    error BadPayloadLength();
+    /// @notice Notary payload does not carry the `receiveRoot` selector.
+    error BadSelector();
+    /// @notice `batchIndex != nextBatch` — skips, reorders and replays die here.
+    error OutOfOrder();
+
+    // ---------------------------------------------------------------------
     // Configuration & record
     // ---------------------------------------------------------------------
 

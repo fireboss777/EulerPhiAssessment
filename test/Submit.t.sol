@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {IArticleAnchor} from "../src/interfaces/IArticleAnchor.sol";
 import {ArticleAnchor} from "../src/ArticleAnchor.sol";
 import {ArticleSubmission} from "../src/ArticleLib.sol";
 import {ECDSA} from "solady/utils/ECDSA.sol";
@@ -30,7 +31,7 @@ contract SubmitTest is ArticleTestBase {
         bytes memory sig = signArticle(hub, p, AUTHOR_KEY);
         bytes32 wrongLeaf = bytes32(uint256(leafOf(p)) ^ 1);
 
-        vm.expectRevert("digest mismatch");
+        vm.expectRevert(IArticleAnchor.DigestMismatch.selector);
         hub.submitArticle(wrongLeaf, sig, p);
     }
 
@@ -49,7 +50,7 @@ contract SubmitTest is ArticleTestBase {
         // Malleable twin: (r, N-s, v flipped) — same signer, high-s form.
         bytes memory malleable = abi.encodePacked(r, ECDSA.N - uint256(s), v == 27 ? 28 : 27);
 
-        vm.expectRevert("high-s");
+        vm.expectRevert(IArticleAnchor.NonCanonicalSignature.selector);
         hub.submitArticle(leafOf(p), malleable, p);
     }
 
@@ -59,7 +60,7 @@ contract SubmitTest is ArticleTestBase {
         bytes memory sig = signArticle(hub, p, AUTHOR_KEY);
         vm.warp(p.deadline + 1);
 
-        vm.expectRevert("expired");
+        vm.expectRevert(IArticleAnchor.Expired.selector);
         hub.submitArticle(leafOf(p), sig, p);
     }
 
@@ -70,7 +71,7 @@ contract SubmitTest is ArticleTestBase {
         ArticleSubmission memory second = payloadFor(author, 6);
         bytes memory sig2 = signArticle(hub, second, AUTHOR_KEY);
 
-        vm.expectRevert(bytes("rate"));
+        vm.expectRevert(IArticleAnchor.RateLimited.selector);
         hub.submitArticle(leafOf(second), sig2, second);
     }
 
@@ -82,7 +83,7 @@ contract SubmitTest is ArticleTestBase {
         bytes memory sig = signArticle(hub, p, AUTHOR_KEY);
         vm.warp(block.timestamp + 1 hours); // clear the per-author rate limit
 
-        vm.expectRevert(bytes("dup"));
+        vm.expectRevert(IArticleAnchor.DuplicateUuid.selector);
         hub.submitArticle(leafOf(p), sig, p);
     }
 
@@ -107,7 +108,7 @@ contract SubmitTest is ArticleTestBase {
         ArticleSubmission memory p = payloadFor(vm.addr(AUTHOR_KEY), 9);
         bytes memory forged = signArticle(hub, p, FORGER_KEY);
 
-        vm.expectRevert("not author");
+        vm.expectRevert(IArticleAnchor.NotAuthor.selector);
         hub.submitArticle(leafOf(p), forged, p);
     }
 
@@ -121,7 +122,7 @@ contract SubmitTest is ArticleTestBase {
         bytes32 leaf = leafOf(p);
 
         bytes memory foreignContractSig = signArticle(otherHub, p, AUTHOR_KEY);
-        vm.expectRevert("not author");
+        vm.expectRevert(IArticleAnchor.NotAuthor.selector);
         hub.submitArticle(leaf, foreignContractSig, p);
 
         uint256 originalChainId = block.chainid;
@@ -129,7 +130,7 @@ contract SubmitTest is ArticleTestBase {
         bytes memory foreignChainSig = signArticle(hub, p, AUTHOR_KEY);
         vm.chainId(originalChainId);
 
-        vm.expectRevert("not author");
+        vm.expectRevert(IArticleAnchor.NotAuthor.selector);
         hub.submitArticle(leaf, foreignChainSig, p);
     }
 
@@ -165,7 +166,7 @@ contract SubmitTest is ArticleTestBase {
         twin.uuid = keccak256("one shot"); // same uuid, different content
         bytes memory sig = signArticle(hub, twin, AUTHOR_KEY);
 
-        vm.expectRevert(bytes("dup"));
+        vm.expectRevert(IArticleAnchor.DuplicateUuid.selector);
         hub.submitArticle(leafOf(twin), sig, twin);
     }
 }

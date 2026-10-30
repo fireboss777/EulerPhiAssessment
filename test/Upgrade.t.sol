@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {IArticleAnchor} from "../src/interfaces/IArticleAnchor.sol";
 import {ArticleAnchor} from "../src/ArticleAnchor.sol";
 import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
 import {ArticleAnchorV2Stub} from "./mocks/ArticleAnchorV2Stub.sol";
@@ -30,7 +31,7 @@ contract UpgradeTest is ArticleTestBase {
         ArticleAnchor newImpl = new ArticleAnchor();
 
         vm.prank(address(0xBAD));
-        vm.expectRevert("admin only");
+        vm.expectRevert(IArticleAnchor.AdminOnly.selector);
         hub.upgradeToAndCall(address(newImpl), "");
     }
 
@@ -56,7 +57,7 @@ contract UpgradeTest is ArticleTestBase {
         (ArticleAnchor hub,) = _proxyHub(address(this), address(0), 8453);
 
         vm.prank(address(0xBAD));
-        vm.expectRevert("admin only");
+        vm.expectRevert(IArticleAnchor.AdminOnly.selector);
         hub.setGateway(address(0x9999));
 
         hub.setGateway(address(0x9999));
@@ -89,7 +90,7 @@ contract UpgradeTest is ArticleTestBase {
         ArticleAnchor fresh =
             ArticleAnchor(address(new ERC1967Proxy(address(impl), abi.encodeWithSignature("journalLength()"))));
 
-        vm.expectRevert("zero admin");
+        vm.expectRevert(IArticleAnchor.ZeroAdmin.selector);
         fresh.initialize(address(0), address(0), 8453);
 
         fresh.initialize(address(this), address(0), 8453); // failed attempt must not consume the flag
@@ -102,7 +103,7 @@ contract UpgradeTest is ArticleTestBase {
     function test_zeroAdminProxyCannotBeConstructed() public {
         ArticleAnchor impl = new ArticleAnchor();
 
-        vm.expectRevert("zero admin");
+        vm.expectRevert(IArticleAnchor.ZeroAdmin.selector);
         new ERC1967Proxy(address(impl), abi.encodeCall(ArticleAnchor.initialize, (address(0), address(0), 8453)));
     }
 

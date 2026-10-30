@@ -44,8 +44,8 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         payable
     {
         // Cheap, chain-agnostic sanity checks before any fee moves:
-        require(block.timestamp <= payload.deadline, "expired");
-        require(keccak256(abi.encode(payload)) == leafDigest, "digest mismatch");
+        if (block.timestamp > payload.deadline) revert Expired();
+        if (keccak256(abi.encode(payload)) != leafDigest) revert DigestMismatch();
 
         Client.EVM2AnyMessage memory m = Client.EVM2AnyMessage({
             receiver: abi.encode(hub),
@@ -56,7 +56,7 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         });
 
         uint256 fee = IRouterClient(router).getFee(baseChainSelector, m);
-        require(msg.value >= fee, "insufficient fee");
+        if (msg.value < fee) revert InsufficientFee();
 
         bytes32 messageId = IRouterClient(router).ccipSend{value: fee}(baseChainSelector, m);
         emit SubmittedOnL1(msg.sender, leafDigest, messageId);
@@ -65,7 +65,7 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         uint256 excess = msg.value - fee;
         if (excess > 0) {
             (bool ok,) = msg.sender.call{value: excess}("");
-            require(ok, "refund failed");
+            if (!ok) revert RefundFailed();
         }
     }
 
@@ -81,8 +81,8 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         external
         override(ISubmissionGateway, IAny2EVMMessageReceiver)
     {
-        require(message.sourceChainSelector == baseChainSelector, "bad chain");
-        require(abi.decode(message.sender, (address)) == hub, "bad sender");
+        if (message.sourceChainSelector != baseChainSelector) revert BadChain();
+        if (abi.decode(message.sender, (address)) != hub) revert BadSender();
         _applyNotaryPayload(message.data);
     }
 
@@ -92,16 +92,16 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
     /// never be reinterpreted as `(batchIndex, root)`. Verified end-to-end by
     /// `test_notarizeRoundTripIntoGateway` (hub encode -> gateway decode).
     function _applyNotaryPayload(bytes calldata data) internal {
-        require(data.length == 68, "bad len");
-        require(bytes4(data[0:4]) == ISubmissionGateway.receiveRoot.selector, "bad selector");
+        if (data.length != 68) revert BadPayloadLength();
+        if (bytes4(data[0:4]) != ISubmissionGateway.receiveRoot.selector) revert BadSelector();
         (uint256 batchIndex, bytes32 root) = abi.decode(data[4:], (uint256, bytes32));
         receiveRoot(batchIndex, root);
     }
 
     /// @inheritdoc ISubmissionGateway
     function receiveRoot(uint256 batchIndex, bytes32 root) public {
-        require(msg.sender == address(router), "not router");
-        require(batchIndex == nextBatch, "out of order");
+        if (msg.sender != address(router)) revert NotRouter();
+        if (batchIndex != nextBatch) revert OutOfOrder();
 
         notarizedRoot[batchIndex] = root;
         nextBatch = batchIndex + 1;

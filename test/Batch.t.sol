@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {MerkleTreeLib} from "solady/utils/MerkleTreeLib.sol";
+import {IArticleAnchor} from "../src/interfaces/IArticleAnchor.sol";
 import {ArticleAnchor} from "../src/ArticleAnchor.sol";
 import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
 
@@ -10,7 +11,7 @@ contract BatchTest is ArticleTestBase {
         ArticleAnchor hub = deployHub();
         seedBatch(hub, hub.MIN_BATCH() - 1); // 9 < 10, same block => no deadline either
 
-        vm.expectRevert("batch not ready");
+        vm.expectRevert(IArticleAnchor.BatchNotReady.selector);
         hub.anchorNextBatch();
 
         vm.warp(block.timestamp + hub.BATCH_DEADLINE());
@@ -29,7 +30,7 @@ contract BatchTest is ArticleTestBase {
         hub.anchorNextBatch();
         assertEq(hub.lastAnchoredIndex(), 200, "capped at MAX_BATCH");
 
-        vm.expectRevert("batch not ready"); // 5 pending, < MIN, fresh window
+        vm.expectRevert(IArticleAnchor.BatchNotReady.selector); // 5 pending, < MIN, fresh window
         hub.anchorNextBatch();
 
         vm.warp(block.timestamp + hub.BATCH_DEADLINE() + 1);
@@ -52,7 +53,7 @@ contract BatchTest is ArticleTestBase {
     function test_emptyAnchorReverts() public {
         ArticleAnchor hub = deployHub();
 
-        vm.expectRevert("batch not ready");
+        vm.expectRevert(IArticleAnchor.BatchNotReady.selector);
         hub.anchorNextBatch();
     }
 

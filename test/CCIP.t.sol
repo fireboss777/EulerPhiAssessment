@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {IArticleAnchor} from "../src/interfaces/IArticleAnchor.sol";
 import {ArticleAnchor} from "../src/ArticleAnchor.sol";
 import {ArticleSubmission} from "../src/ArticleLib.sol";
 import {Client} from "../src/interfaces/Client.sol";
@@ -64,7 +65,7 @@ contract CCIPTest is ArticleTestBase {
         (bytes32 leaf, bytes memory sig, ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 2);
         Client.Any2EVMMessage memory m = _inbound(TEST_SEL + 1, GATEWAY, leaf, sig, p);
 
-        vm.expectRevert("bad chain");
+        vm.expectRevert(IArticleAnchor.BadChain.selector);
         mock.deliver(address(hub), m);
     }
 
@@ -72,7 +73,7 @@ contract CCIPTest is ArticleTestBase {
         (bytes32 leaf, bytes memory sig, ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 3);
         Client.Any2EVMMessage memory m = _inbound(TEST_SEL, FOREIGN_SENDER, leaf, sig, p);
 
-        vm.expectRevert("bad sender");
+        vm.expectRevert(IArticleAnchor.BadSender.selector);
         mock.deliver(address(hub), m);
     }
 
@@ -86,7 +87,7 @@ contract CCIPTest is ArticleTestBase {
 
         // Lane 2: the very same signed payload delivered via CCIP from L1.
         Client.Any2EVMMessage memory m = _inbound(TEST_SEL, GATEWAY, leaf, sig, p);
-        vm.expectRevert(bytes("dup"));
+        vm.expectRevert(IArticleAnchor.DuplicateUuid.selector);
         mock.deliver(address(hub), m);
 
         assertEq(hub.journalLength(), 1, "no duplicate leaf");
@@ -108,7 +109,7 @@ contract CCIPTest is ArticleTestBase {
         (bytes32 leaf, bytes memory sig, ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 6);
         Client.Any2EVMMessage memory m = _inbound(TEST_SEL, GATEWAY, leaf, sig, p);
 
-        vm.expectRevert("not router");
+        vm.expectRevert(IArticleAnchor.NotRouter.selector);
         hub.consumeSubmittedArticle(m);
     }
 
@@ -117,7 +118,7 @@ contract CCIPTest is ArticleTestBase {
     // ------------------------------------------------------------------
 
     function test_notarizeUnanchoredBatchReverts() public {
-        vm.expectRevert("no batch");
+        vm.expectRevert(IArticleAnchor.NoBatch.selector);
         hub.notarize{value: 0}(0);
     }
 
@@ -127,7 +128,7 @@ contract CCIPTest is ArticleTestBase {
         uint256 anchoredAt = hub.anchoredAtBlock(0);
         vm.roll(anchoredAt + hub.NOTARY_K() - 1);
 
-        vm.expectRevert("not final");
+        vm.expectRevert(IArticleAnchor.NotFinal.selector);
         hub.notarize{value: 0.01 ether}(0);
     }
 

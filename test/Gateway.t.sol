@@ -75,7 +75,7 @@ contract GatewayTest is ArticleTestBase {
         (ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
         bytes32 wrongLeaf = bytes32(uint256(leafOf(p)) ^ 1);
 
-        vm.expectRevert("digest mismatch");
+        vm.expectRevert(ISubmissionGateway.DigestMismatch.selector);
         gw.submitArticle{value: 0}(wrongLeaf, sig, p);
     }
 
@@ -83,7 +83,7 @@ contract GatewayTest is ArticleTestBase {
         (ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
         vm.deal(address(this), 1 ether);
 
-        vm.expectRevert("insufficient fee");
+        vm.expectRevert(ISubmissionGateway.InsufficientFee.selector);
         gw.submitArticle{value: 0.005 ether}(leafOf(p), sig, p); // fee is 0.01
     }
 
@@ -107,7 +107,7 @@ contract GatewayTest is ArticleTestBase {
         bytes32 r1 = keccak256("r1");
 
         // Batch 1 before batch 0 — rejected (no skipping, no reordering).
-        vm.expectRevert("out of order");
+        vm.expectRevert(ISubmissionGateway.OutOfOrder.selector);
         mock.deliverViaCcipReceive(address(gw), _rootMsg(BASE_SEL, HUB, 1, r1));
 
         mock.deliverViaCcipReceive(address(gw), _rootMsg(BASE_SEL, HUB, 0, r0));
@@ -115,7 +115,7 @@ contract GatewayTest is ArticleTestBase {
         assertEq(gw.nextBatch(), 1, "cursor advanced");
 
         // Replay of batch 0 — rejected.
-        vm.expectRevert("out of order");
+        vm.expectRevert(ISubmissionGateway.OutOfOrder.selector);
         mock.deliverViaCcipReceive(address(gw), _rootMsg(BASE_SEL, HUB, 0, r0));
 
         mock.deliverViaCcipReceive(address(gw), _rootMsg(BASE_SEL, HUB, 1, r1));
@@ -123,17 +123,17 @@ contract GatewayTest is ArticleTestBase {
     }
 
     function test_receiveRootWrongSourceReverts() public {
-        vm.expectRevert("bad chain");
+        vm.expectRevert(ISubmissionGateway.BadChain.selector);
         mock.deliverViaCcipReceive(address(gw), _rootMsg(BASE_SEL + 1, HUB, 0, keccak256("r")));
 
-        vm.expectRevert("bad sender");
+        vm.expectRevert(ISubmissionGateway.BadSender.selector);
         mock.deliverViaCcipReceive(address(gw), _rootMsg(BASE_SEL, FOREIGN, 0, keccak256("r")));
     }
 
     /// @dev `receiveRoot` is public (plan-named API) but router-gated inside:
     /// a direct caller — even with a perfectly ordered batch — dies at the gate.
     function test_receiveRootDirectCallReverts() public {
-        vm.expectRevert("not router");
+        vm.expectRevert(ISubmissionGateway.NotRouter.selector);
         gw.receiveRoot(0, keccak256("r0"));
     }
 
@@ -206,12 +206,12 @@ contract GatewayTest is ArticleTestBase {
 
         Client.Any2EVMMessage memory noSelector = _rootMsg(BASE_SEL, HUB, 0, root);
         noSelector.data = abi.encode(0, root); // 64-byte tuple: no selector
-        vm.expectRevert("bad len");
+        vm.expectRevert(ISubmissionGateway.BadPayloadLength.selector);
         mock.deliverViaCcipReceive(address(gw), noSelector);
 
         Client.Any2EVMMessage memory wrongSelector = _rootMsg(BASE_SEL, HUB, 0, root);
         wrongSelector.data = abi.encodePacked(hex"deadbeef", abi.encode(0, root));
-        vm.expectRevert("bad selector");
+        vm.expectRevert(ISubmissionGateway.BadSelector.selector);
         mock.deliverViaCcipReceive(address(gw), wrongSelector);
     }
 }

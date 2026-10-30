@@ -163,13 +163,13 @@ production-shaped numbers, not direct-call ones.
 |---|---|---:|---|
 | `submitArticle` — first leaf (cold slots) | relayer / writer | **130,075** | opens the batch window |
 | `submitArticle` — steady state | relayer / writer | **88,062** | 1h per-author rate limit applies |
-| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **126,460** | ≈98k fixed window/tree overhead |
-| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **675,330** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
+| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **126,472** | ≈98k fixed window/tree overhead |
+| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **675,342** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
 | `verifyAgainstBatch` — 10-leaf root | reader | **14,995** | an `eth_call` costs you nothing |
 | `notarize` — our side (K-gated) | keeper | **38,598** | + CCIP fee + the router's own execution |
 | gateway `submitArticle` — our side | writer | **37,148** | + L1 gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 14,997 B runtime, `SubmissionGateway` 6,768 B
+Contract sizes: `ArticleAnchor` 13,298 B runtime, `SubmissionGateway` 5,622 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
@@ -475,11 +475,14 @@ src/
   SubmissionGateway.sol    L1: payable entry lane (no ecrecover) + monotonic notary receiver
   ArticleLib.sol           EIP-712 struct + typehash
   interfaces/
-    IArticleAnchor.sol     hub's full public ABI (functions, getters, constants, events)
-                           + every API NatSpec — ArticleAnchor inherits it, so the
-                           compiler keeps docs and ABI in lockstep
-    ISubmissionGateway.sol same for SubmissionGateway (it also fixes the 68-byte
-                           `receiveRoot` wire format the hub encodes against)
+    IArticleAnchor.sol     hub's full public ABI (functions, getters, constants,
+                           events) + all 15 custom errors + every API NatSpec —
+                           ArticleAnchor inherits it, so the compiler keeps docs
+                           and ABI in lockstep. Every failure is a typed error
+                           declared here, never a revert string
+    ISubmissionGateway.sol same for SubmissionGateway (10 typed errors; it also
+                           fixes the 68-byte `receiveRoot` wire format the hub
+                           encodes against)
     Client.sol, IRouterClient.sol, IAny2EVMMessageReceiver.sol
                            vendored CCIP subset @ commit 171f9f0
 script/

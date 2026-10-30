@@ -29,6 +29,43 @@ import {Client} from "./Client.sol";
 /// below.
 interface IArticleAnchor {
     // ---------------------------------------------------------------------
+    // Errors (thrown by the implementation; declared here so the ABI and the
+    // docs of every failure mode live with the API they belong to)
+    // ---------------------------------------------------------------------
+
+    /// @notice Caller is not the `admin`.
+    error AdminOnly();
+    /// @notice `initialize` was called with `admin_ = address(0)` — an
+    /// admin-less hub could never be upgraded.
+    error ZeroAdmin();
+    /// @notice The payload's `deadline` is already in the past.
+    error Expired();
+    /// @notice `leafDigest` is not `keccak256(abi.encode(payload))`.
+    error DigestMismatch();
+    /// @notice Signature is not a canonical 65-byte `(r, s, v)`.
+    error InvalidSignatureLength();
+    /// @notice High-`s` (malleable, non EIP-2) form of the signature.
+    error NonCanonicalSignature();
+    /// @notice Recovered signer is not `payload.author`.
+    error NotAuthor();
+    /// @notice Author submitted again inside `RATE_LIMIT`.
+    error RateLimited();
+    /// @notice This `(author, uuid)` was already published.
+    error DuplicateUuid();
+    /// @notice Caller is not the pinned router (inbound CCIP lane gate).
+    error NotRouter();
+    /// @notice Message is from a chain other than the pinned selector.
+    error BadChain();
+    /// @notice Message is from a sender other than the pinned one.
+    error BadSender();
+    /// @notice The batch is neither big enough nor old enough to close.
+    error BatchNotReady();
+    /// @notice No such anchored batch — nothing to notarize.
+    error NoBatch();
+    /// @notice Batch has not reached `NOTARY_K` confirmations yet (reorg gate).
+    error NotFinal();
+
+    // ---------------------------------------------------------------------
     // Batch & lane policy
     // ---------------------------------------------------------------------
 
@@ -138,8 +175,7 @@ interface IArticleAnchor {
     /// the bare implementation is locked forever by `_disableInitializers()`
     /// in its own constructor, so no stranger can ever own it.
     /// @dev Reverts `Initializable.InvalidInitialization()` on a second call,
-    /// and reverts `"zero admin"` on `admin_ = address(0)` — an admin-less hub
-    /// could never be upgraded.
+    /// and `ZeroAdmin()` on `admin_ = address(0)`.
     function initialize(address admin_, address router_, uint64 chainSelector_) external;
 
     /// @notice Post-deploy wiring: the L1 gateway address is known only after
@@ -153,10 +189,9 @@ interface IArticleAnchor {
 
     /// @notice Publish a signed article. Caller pays gas; may be anyone —
     /// authorship comes exclusively from `payload`'s EIP-712 signature.
-    /// @dev Reverts when: the payload outlived its `deadline`; `leafDigest`
-    /// isn't `keccak256(abi.encode(payload))`; the signature is not a canonical
-    /// 65-byte low-`s` form; recovery isn't `payload.author`; the author
-    /// submitted inside `RATE_LIMIT`; `(author, uuid)` was already used.
+    /// @dev Reverts, in order: `Expired()`, `DigestMismatch()`,
+    /// `InvalidSignatureLength()`, `NonCanonicalSignature()`, `NotAuthor()`,
+    /// `RateLimited()`, `DuplicateUuid()`.
     /// @param leafDigest The commitment that will be journaled.
     /// @param sig EIP-712 signature over `ArticleSubmission`, 65 bytes `(r, s, v)`.
     /// @param payload The typed article envelope (hashes only — content stays off-chain).
@@ -179,7 +214,7 @@ interface IArticleAnchor {
     /// @notice Notarize an anchored batch root to the L1 gateway via CCIP.
     /// Permissionless; the caller funds the fee (`msg.value`) — keepers pay
     /// for what they send, no protocol float to drain.
-    /// @dev Reverts `"no batch"` for an unanchored index and `"not final"` until
+    /// @dev Reverts `NoBatch()` for an unanchored index and `NotFinal()` until
     /// `block.number >= anchoredAtBlock[batchIndex] + NOTARY_K` (reorg gate).
     /// @param batchIndex Index of the batch whose frozen root is being sent.
     function notarize(uint256 batchIndex) external payable;
