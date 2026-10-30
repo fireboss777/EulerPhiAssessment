@@ -7,6 +7,9 @@ import {MerkleProofLib} from "solady/utils/MerkleProofLib.sol";
 import {MerkleTreeLib} from "solady/utils/MerkleTreeLib.sol";
 import {ECDSA} from "solady/utils/ECDSA.sol";
 import {ArticleLib, ArticleSubmission} from "./ArticleLib.sol";
+import {Client} from "./interfaces/Client.sol";
+import {IRouterClient} from "./interfaces/IRouterClient.sol";
+import {ISubmissionGateway} from "./interfaces/ISubmissionGateway.sol";
 
 /// @title ArticleAnchor — the canonical journal & batch root registry (hub).
 /// @notice Authors sign `ArticleSubmission` payloads (EIP-712); anyone may
@@ -26,6 +29,8 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
     uint256 public constant RATE_LIMIT = 1 hours;
     /// @notice L2 block confirmations required before a root may be notarized upward.
     uint256 public constant NOTARY_K = 64;
+    /// @notice Receiver-side gas limit attached to the CCIP notary message.
+    uint256 public constant NOTARY_GAS_LIMIT = 200_000;
     /// @dev floor(N/2) of secp256k1: signatures must be canonical low-s (EIP-2).
     uint256 private constant _HIGH_S_MAX =
         0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
@@ -52,6 +57,7 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
 
     event Submitted(address indexed author, address indexed submitter, bytes32 leafDigest);
     event RootAnchored(uint256 indexed batchIndex, bytes32 root, uint256 start, uint256 end);
+    event Notarized(uint256 indexed batchIndex, bytes32 root, bytes32 messageId);
 
     modifier onlyAdmin() {
         require(msg.sender == admin, "admin only");
@@ -89,7 +95,7 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
         _submit(leafDigest, sig, payload);
     }
 
-    function _submit(bytes32 leafDigest, bytes calldata sig, ArticleSubmission calldata payload)
+    function _submit(bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload)
         internal
     {
         require(block.timestamp <= payload.deadline, "expired");
@@ -97,7 +103,11 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
         // Canonical 65-byte (r, s, v) only; low-s enforced (Solady's recover
         // deliberately accepts malleable s, so the gate lives here).
         require(sig.length == 65, "sig len");
-        require(uint256(bytes32(sig[32:64])) <= _HIGH_S_MAX, "high-s");
+        bytes32 s;
+        assembly ("memory-safe") {
+            s := mload(add(sig, 0x40)) // `s` at offset 0x40 of the bytes payload
+        }
+        require(uint256(s) <= _HIGH_S_MAX, "high-s");
         bytes32 digest = _hashTypedData(ArticleLib.hashStruct(payload));
         require(ECDSA.recover(digest, sig) == payload.author, "not author");
         require(block.timestamp >= lastSubmit[payload.author] + RATE_LIMIT, "rate");
@@ -110,6 +120,47 @@ contract ArticleAnchor is EIP712, UUPSUpgradeable {
         journal.push(leafDigest);
 
         emit Submitted(payload.author, msg.sender, leafDigest);
+    }
+
+    // ---------------------------------------------------------------------
+    // CCIP lanes
+    // ---------------------------------------------------------------------
+
+    /// @notice Standard IAny2EVMMessageReceiver entry — what a real Router
+    /// calls to deliver. Forwards into the pinned `consumeSubmittedArticle`.
+    function ccipReceive(Client.Any2EVMMessage calldata message) external {
+        consumeSubmittedArticle(message);
+    }
+
+    /// @notice Inbound lane: signed article payloads from the pinned L1
+    /// gateway. Pinned by (router, sourceChainSelector, sender) — all three,
+    /// so a foreign router, chain, or contract cannot journal anything.
+    function consumeSubmittedArticle(Client.Any2EVMMessage calldata message) public {
+        require(msg.sender == address(router), "not router");
+        require(message.sourceChainSelector == ethChainSelector, "bad chain");
+        require(abi.decode(message.sender, (address)) == gateway, "bad sender");
+        (bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload) =
+            abi.decode(message.data, (bytes32, bytes, ArticleSubmission));
+        _submit(leafDigest, sig, payload);
+    }
+
+    /// @notice Notarize an anchored batch root to the L1 gateway via CCIP.
+    /// Permissionless; the caller funds the fee (`msg.value`) — keepers pay
+    /// for what they send, no protocol float to drain.
+    function notarize(uint256 batchIndex) external payable {
+        uint256 anchoredAt = anchoredAtBlock[batchIndex];
+        require(anchoredAt != 0, "no batch");
+        require(block.number >= anchoredAt + NOTARY_K, "not final");
+
+        Client.EVM2AnyMessage memory m = Client.EVM2AnyMessage({
+            receiver: abi.encode(gateway),
+            data: abi.encodeCall(ISubmissionGateway.receiveRoot, (batchIndex, rootAt[batchIndex])),
+            tokenAmounts: new Client.EVMTokenAmount[](0),
+            feeToken: address(0),
+            extraArgs: Client._argsToBytesV1(NOTARY_GAS_LIMIT)
+        });
+        bytes32 messageId = IRouterClient(router).ccipSend{value: msg.value}(ethChainSelector, m);
+        emit Notarized(batchIndex, rootAt[batchIndex], messageId);
     }
 
     // ---------------------------------------------------------------------
