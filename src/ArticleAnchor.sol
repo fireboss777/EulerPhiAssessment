@@ -17,7 +17,7 @@ import {IArticleAnchor} from "./interfaces/IArticleAnchor.sol";
 /// and documented on `IArticleAnchor`, which this contract inherits — read the
 /// interface for the API. Only implementation-side members (constructor,
 /// modifiers, `internal` helpers) are documented here.
-contract ArticleAnchor is EIP712, UUPSUpgradeable, IArticleAnchor {
+contract ArticleAnchor is IArticleAnchor, EIP712, UUPSUpgradeable {
     // ---------------------------------------------------------------------
     // Constants (see plan: batch policy)
     // ---------------------------------------------------------------------

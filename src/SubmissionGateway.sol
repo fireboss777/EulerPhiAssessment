@@ -12,7 +12,7 @@ import {IAny2EVMMessageReceiver} from "./interfaces/IAny2EVMMessageReceiver.sol"
 /// and documented on `ISubmissionGateway`, which this contract inherits — read
 /// the interface for the API (including the paid-lane / no-ecrecover design
 /// notes). Only implementation-side members are documented here.
-contract SubmissionGateway is IAny2EVMMessageReceiver, ISubmissionGateway {
+contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
     uint256 public constant SUBMIT_GAS_LIMIT = 400_000;
 
     address public immutable router;
@@ -71,7 +71,7 @@ contract SubmissionGateway is IAny2EVMMessageReceiver, ISubmissionGateway {
     /// the explicit override list.
     function ccipReceive(Client.Any2EVMMessage calldata message)
         external
-        override(IAny2EVMMessageReceiver, ISubmissionGateway)
+        override(ISubmissionGateway, IAny2EVMMessageReceiver)
     {
         require(message.sourceChainSelector == baseChainSelector, "bad chain");
         require(abi.decode(message.sender, (address)) == hub, "bad sender");
