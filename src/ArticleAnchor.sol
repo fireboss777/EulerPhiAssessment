@@ -21,11 +21,17 @@ contract ArticleAnchor is IArticleAnchor, EIP712, UUPSUpgradeable {
     // ---------------------------------------------------------------------
     // Constants (see plan: batch policy)
     // ---------------------------------------------------------------------
+    /// @inheritdoc IArticleAnchor
     uint256 public constant MIN_BATCH = 10;
+    /// @inheritdoc IArticleAnchor
     uint256 public constant MAX_BATCH = 200;
+    /// @inheritdoc IArticleAnchor
     uint256 public constant BATCH_DEADLINE = 6 hours;
+    /// @inheritdoc IArticleAnchor
     uint256 public constant RATE_LIMIT = 60 minutes;
+    /// @inheritdoc IArticleAnchor
     uint256 public constant NOTARY_K = 64;
+    /// @inheritdoc IArticleAnchor
     uint256 public constant NOTARY_GAS_LIMIT = 200_000;
     /// @dev floor(N/2) of secp256k1: signatures must be canonical low-s (EIP-2).
     uint256 private constant _HIGH_S_MAX = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
@@ -33,21 +39,33 @@ contract ArticleAnchor is IArticleAnchor, EIP712, UUPSUpgradeable {
     // ---------------------------------------------------------------------
     // Configuration (storage, never immutables: proxy-safe)
     // ---------------------------------------------------------------------
+    /// @inheritdoc IArticleAnchor
     address public admin;
+    /// @inheritdoc IArticleAnchor
     address public router;
+    /// @inheritdoc IArticleAnchor
     uint64 public ethChainSelector;
+    /// @inheritdoc IArticleAnchor
     address public gateway;
 
     // ---------------------------------------------------------------------
     // Journal & batch state
     // ---------------------------------------------------------------------
+    /// @inheritdoc IArticleAnchor
     bytes32[] public journal;
+    /// @inheritdoc IArticleAnchor
     mapping(address => mapping(bytes32 => bool)) public usedUuid;
+    /// @inheritdoc IArticleAnchor
     mapping(address => uint256) public lastSubmit;
+    /// @inheritdoc IArticleAnchor
     uint256 public batchOpenedAt;
+    /// @inheritdoc IArticleAnchor
     uint256 public lastAnchoredIndex;
+    /// @inheritdoc IArticleAnchor
     mapping(uint256 => bytes32) public rootAt;
+    /// @inheritdoc IArticleAnchor
     mapping(uint256 => uint256) public anchoredAtBlock;
+    /// @inheritdoc IArticleAnchor
     uint256 public anchoredBatches;
     /// @dev Appended last so earlier slot numbers never move (UUPS-safe).
     /// Set in the constructor too: the bare implementation — which ships with
@@ -67,6 +85,7 @@ contract ArticleAnchor is IArticleAnchor, EIP712, UUPSUpgradeable {
         gateway = gateway_;
     }
 
+    /// @inheritdoc IArticleAnchor
     function initialize(address admin_, address router_, uint64 chainSelector_) external {
         require(!_initialized, "initialized");
         require(admin_ != address(0), "zero admin");
@@ -76,6 +95,7 @@ contract ArticleAnchor is IArticleAnchor, EIP712, UUPSUpgradeable {
         ethChainSelector = chainSelector_;
     }
 
+    /// @inheritdoc IArticleAnchor
     function setGateway(address gateway_) external onlyAdmin {
         gateway = gateway_;
     }
@@ -96,6 +116,7 @@ contract ArticleAnchor is IArticleAnchor, EIP712, UUPSUpgradeable {
     // Submission
     // ---------------------------------------------------------------------
 
+    /// @inheritdoc IArticleAnchor
     function submitArticle(bytes32 leafDigest, bytes calldata sig, ArticleSubmission calldata payload) external {
         _submit(leafDigest, sig, payload);
     }
@@ -129,10 +150,12 @@ contract ArticleAnchor is IArticleAnchor, EIP712, UUPSUpgradeable {
     // CCIP lanes
     // ---------------------------------------------------------------------
 
+    /// @inheritdoc IArticleAnchor
     function ccipReceive(Client.Any2EVMMessage calldata message) external {
         consumeSubmittedArticle(message);
     }
 
+    /// @inheritdoc IArticleAnchor
     function consumeSubmittedArticle(Client.Any2EVMMessage calldata message) public {
         require(msg.sender == address(router), "not router");
         require(message.sourceChainSelector == ethChainSelector, "bad chain");
@@ -142,6 +165,7 @@ contract ArticleAnchor is IArticleAnchor, EIP712, UUPSUpgradeable {
         _submit(leafDigest, sig, payload);
     }
 
+    /// @inheritdoc IArticleAnchor
     function notarize(uint256 batchIndex) external payable {
         uint256 anchoredAt = anchoredAtBlock[batchIndex];
         require(anchoredAt != 0, "no batch");
@@ -162,6 +186,7 @@ contract ArticleAnchor is IArticleAnchor, EIP712, UUPSUpgradeable {
     // Batching & anchoring
     // ---------------------------------------------------------------------
 
+    /// @inheritdoc IArticleAnchor
     function anchorNextBatch() external returns (bytes32 root) {
         uint256 start = lastAnchoredIndex;
         uint256 pending = journal.length - start;
@@ -196,6 +221,7 @@ contract ArticleAnchor is IArticleAnchor, EIP712, UUPSUpgradeable {
         return MerkleTreeLib.root(MerkleTreeLib.build(leaves));
     }
 
+    /// @inheritdoc IArticleAnchor
     function verifyAgainstBatch(uint256 batchIndex, bytes32 leaf, bytes32[] calldata proof)
         external
         view
@@ -208,10 +234,12 @@ contract ArticleAnchor is IArticleAnchor, EIP712, UUPSUpgradeable {
     // Views
     // ---------------------------------------------------------------------
 
+    /// @inheritdoc IArticleAnchor
     function journalLength() external view returns (uint256) {
         return journal.length;
     }
 
+    /// @inheritdoc IArticleAnchor
     function pendingLeaves() external view returns (uint256) {
         return journal.length - lastAnchoredIndex;
     }

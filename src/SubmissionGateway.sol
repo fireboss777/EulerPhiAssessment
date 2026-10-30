@@ -13,13 +13,19 @@ import {IAny2EVMMessageReceiver} from "./interfaces/IAny2EVMMessageReceiver.sol"
 /// the interface for the API (including the paid-lane / no-ecrecover design
 /// notes). Only implementation-side members are documented here.
 contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
+    /// @inheritdoc ISubmissionGateway
     uint256 public constant SUBMIT_GAS_LIMIT = 400_000;
 
+    /// @inheritdoc ISubmissionGateway
     address public immutable router;
+    /// @inheritdoc ISubmissionGateway
     address public immutable hub;
+    /// @inheritdoc ISubmissionGateway
     uint64 public immutable baseChainSelector;
 
+    /// @inheritdoc ISubmissionGateway
     uint256 public nextBatch;
+    /// @inheritdoc ISubmissionGateway
     mapping(uint256 => bytes32) public notarizedRoot;
 
     constructor(address router_, address hub_, uint64 baseChainSelector_) {
@@ -32,6 +38,7 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
     // Paid entry lane: Ethereum -> hub
     // ------------------------------------------------------------------
 
+    /// @inheritdoc ISubmissionGateway
     function submitArticle(bytes32 leafDigest, bytes calldata sig, ArticleSubmission calldata payload)
         external
         payable
@@ -69,6 +76,7 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
     /// @dev Inherits its documentation from `ISubmissionGateway`, which
     /// redeclares it alongside Chainlink's `IAny2EVMMessageReceiver` — hence
     /// the explicit override list.
+    /// @inheritdoc ISubmissionGateway
     function ccipReceive(Client.Any2EVMMessage calldata message)
         external
         override(ISubmissionGateway, IAny2EVMMessageReceiver)
@@ -90,6 +98,7 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         receiveRoot(batchIndex, root);
     }
 
+    /// @inheritdoc ISubmissionGateway
     function receiveRoot(uint256 batchIndex, bytes32 root) public {
         require(msg.sender == address(router), "not router");
         require(batchIndex == nextBatch, "out of order");
