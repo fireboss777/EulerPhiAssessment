@@ -161,10 +161,10 @@ contract's work, not the test double's.
 | `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **123,923** | ≈95k fixed window/tree overhead |
 | `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **672,793** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
 | `verifyAgainstBatch` — 10-leaf root | reader | **12,008** | an `eth_call` costs you nothing |
-| `notarize` — our side (K-gated) | keeper | **36,025** | + CCIP fee + the router's own execution |
-| gateway `submitArticle` — our side | writer | **37,024** | + L1 gas + CCIP fee (router's execution on top) |
+| `notarize` — our side (K-gated) | keeper | **36,149** | + CCIP fee + the router's own execution |
+| gateway `submitArticle` — our side | writer | **37,148** | + L1 gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 13,058 B runtime, `SubmissionGateway` 6,070 B
+Contract sizes: `ArticleAnchor` 13,391 B runtime, `SubmissionGateway` 6,768 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
@@ -255,16 +255,6 @@ all-in on Solidity is a deliberate constraint with three payoffs:
    cross-check roots — but it would run *outside* the EVM, catching encoding
    mistakes rather than semantic ones, and would drag an npm tree into a repo
    whose whole point is that it has none.
-4. **The shape assumption is disclosed, not hidden.** Solady's `build` lays
-   nodes out as a heap, which is *not* the textbook level-wise tree (they
-   diverge at 5 leaves) — so `NaiveMerkle` implements Solady's layout rather
-   than its own convention. Honest residual: the differential therefore checks
-   that Solady's **assembly** computes the documented **layout** correctly, it
-   does not independently re-derive the layout choice. It also means any proof
-   generator must use the same convention: a textbook level-wise builder
-   produces a different root for the same leaves. Both facts are why the
-   differential exists in the first place — and why `NaiveMerkle` stays
-   assembly-free and separately written.
 3. **End-to-end without a frontend.** `forge script` signs with the same
    EIP-712 math the tests use (`E2ESubmit.s.sol` reads the hub's EIP-5267
    domain and derives the digest in Solidity), and `cast` does the
@@ -274,6 +264,16 @@ all-in on Solidity is a deliberate constraint with three payoffs:
 call the contract), no indexer, no IPFS pinning automation. Those are product
 gaps, not technical ones — and adding them later cannot weaken the onchain
 guarantees, because they are not in the trust model.
+
+**Disclosed residual.** Solady's `build` lays nodes out as a heap, which is
+*not* the textbook level-wise tree (they diverge at 5 leaves) — so
+`NaiveMerkle` implements Solady's layout rather than its own convention.
+Honest residual: the differential therefore checks that Solady's **assembly**
+computes the documented **layout** correctly, it does not independently re-
+derive the layout choice. It also means any proof generator must use the same
+convention: a textbook level-wise builder produces a different root for the
+same leaves. Both facts are why the differential exists in the first place —
+and why `NaiveMerkle` stays assembly-free and separately written.
 
 ---
 
@@ -358,10 +358,13 @@ and therefore control the journal. Mitigations in place, all tested:
   (only `upgradeToAndCall`, `proxiableUUID`, `_authorizeUpgrade`), so
   renouncing means **one final upgrade to an implementation whose
   `_authorizeUpgrade` unconditionally reverts**, then discarding the admin
-  key. It must **not** be done by zeroing `admin`: the `initialize` guard is
-  `admin == address(0)`, so a zeroed admin would re-open initialization to
-  anyone. Nothing can write `admin` after init today, so this is a design rule
-  for the renounce implementation, not an open hole.
+  key. It must **not** be done by zeroing `admin`: initialization is gated by
+  the separate `_initialized` flag (not by the admin value), so zeroing admin
+  would *not* re-open `initialize` — it would instead permanently brick
+  `setGateway` and every `admin only` path. Nothing can write `admin` after
+  init today (it is set exactly once by `initialize`), so zeroing it is not an
+  open hole but it is a wrong renounce mechanism: upgrade to a locked
+  implementation first, then discard the key.
 
 ### Chain selectors are sourced, never guessed
 

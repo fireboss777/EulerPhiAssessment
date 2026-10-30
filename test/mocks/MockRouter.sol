@@ -39,6 +39,7 @@ contract MockRouter {
         payable
         returns (bytes32)
     {
+        require(msg.value >= fee, "mock: fee too low"); // upstream ccipSend semantics
         bytes32 messageId = keccak256(abi.encode(destinationChainSelector, message.data, block.number, msg.value));
         if (!capture) return messageId; // gas mode: pass-through, no forensics
         lastDest = destinationChainSelector;

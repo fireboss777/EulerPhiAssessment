@@ -4,8 +4,9 @@ pragma solidity ^0.8.26;
 import {Client} from "./Client.sol";
 
 /// @notice Minimal vendored subset of Chainlink CCIP's IRouterClient.
-/// Source: smartcontractkit/ccip @ ccip-develop,
-/// contracts/src/v0.8/ccip/interfaces/IRouterClient.sol
+/// Source: smartcontractkit/ccip @ commit 171f9f0cf249765116e3131b61f5b4157566f25f,
+/// contracts/src/v0.8/ccip/interfaces/IRouterClient.sol (signatures re-verified
+/// against that commit)
 interface IRouterClient {
     error UnsupportedDestinationChain(uint64 destChainSelector);
     error InsufficientFeeTokenAmount();

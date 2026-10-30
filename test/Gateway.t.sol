@@ -179,6 +179,7 @@ contract GatewayTest is ArticleTestBase {
     function test_notarizeRoundTripIntoGateway() public {
         ArticleAnchor hub = new ArticleAnchor(address(this), address(mock), BASE_SEL, address(0x9999));
         SubmissionGateway gw2 = new SubmissionGateway(address(mock), address(hub), BASE_SEL);
+        hub.setGateway(address(gw2)); // production wiring, not a dummy address
         seedBatch(hub, 10);
         hub.anchorNextBatch();
         vm.roll(hub.anchoredAtBlock(0) + hub.NOTARY_K());

@@ -2,7 +2,8 @@
 pragma solidity ^0.8.26;
 
 /// @notice Minimal vendored subset of Chainlink CCIP's Client library.
-/// Source: smartcontractkit/ccip @ ccip-develop, contracts/src/v0.8/ccip/libraries/Client.sol.
+/// Source: smartcontractkit/ccip @ commit 171f9f0cf249765116e3131b61f5b4157566f25f,
+/// contracts/src/v0.8/ccip/libraries/Client.sol (structs re-verified against that commit).
 /// Only the structs and tag constants this project touches — kept in lockstep
 /// with upstream; any real-lane deployment must re-verify against current upstream.
 library Client {
