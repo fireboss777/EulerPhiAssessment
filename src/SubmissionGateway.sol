@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 import {ArticleSubmission} from "./ArticleLib.sol";
 import {Client} from "./interfaces/Client.sol";
@@ -44,8 +44,8 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         payable
     {
         // Cheap, chain-agnostic sanity checks before any fee moves:
-        if (block.timestamp > payload.deadline) revert Expired();
-        if (keccak256(abi.encode(payload)) != leafDigest) revert DigestMismatch();
+        require(block.timestamp <= payload.deadline, Expired());
+        require(keccak256(abi.encode(payload)) == leafDigest, DigestMismatch());
 
         Client.EVM2AnyMessage memory m = Client.EVM2AnyMessage({
             receiver: abi.encode(hub),
@@ -56,7 +56,7 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         });
 
         uint256 fee = IRouterClient(router).getFee(baseChainSelector, m);
-        if (msg.value < fee) revert InsufficientFee();
+        require(msg.value >= fee, InsufficientFee());
 
         bytes32 messageId = IRouterClient(router).ccipSend{value: fee}(baseChainSelector, m);
         emit SubmittedOnL1(msg.sender, leafDigest, messageId);
@@ -65,7 +65,7 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         uint256 excess = msg.value - fee;
         if (excess > 0) {
             (bool ok,) = msg.sender.call{value: excess}("");
-            if (!ok) revert RefundFailed();
+            require(ok, RefundFailed());
         }
     }
 
@@ -81,8 +81,8 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         external
         override(ISubmissionGateway, IAny2EVMMessageReceiver)
     {
-        if (message.sourceChainSelector != baseChainSelector) revert BadChain();
-        if (abi.decode(message.sender, (address)) != hub) revert BadSender();
+        require(message.sourceChainSelector == baseChainSelector, BadChain());
+        require(abi.decode(message.sender, (address)) == hub, BadSender());
         _applyNotaryPayload(message.data);
     }
 
@@ -92,16 +92,16 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
     /// never be reinterpreted as `(batchIndex, root)`. Verified end-to-end by
     /// `test_notarizeRoundTripIntoGateway` (hub encode -> gateway decode).
     function _applyNotaryPayload(bytes calldata data) internal {
-        if (data.length != 68) revert BadPayloadLength();
-        if (bytes4(data[0:4]) != ISubmissionGateway.receiveRoot.selector) revert BadSelector();
+        require(data.length == 68, BadPayloadLength());
+        require(bytes4(data[0:4]) == ISubmissionGateway.receiveRoot.selector, BadSelector());
         (uint256 batchIndex, bytes32 root) = abi.decode(data[4:], (uint256, bytes32));
         receiveRoot(batchIndex, root);
     }
 
     /// @inheritdoc ISubmissionGateway
     function receiveRoot(uint256 batchIndex, bytes32 root) public {
-        if (msg.sender != address(router)) revert NotRouter();
-        if (batchIndex != nextBatch) revert OutOfOrder();
+        require(msg.sender == address(router), NotRouter());
+        require(batchIndex == nextBatch, OutOfOrder());
 
         notarizedRoot[batchIndex] = root;
         nextBatch = batchIndex + 1;

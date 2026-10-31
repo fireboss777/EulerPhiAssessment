@@ -23,7 +23,7 @@ end-to-end test all run through `forge`/`cast`. There is no JS/TS/npm anywhere
 git clone <this-repo> && cd <this-repo>
 forge soldeer install        # forge-std 1.17.0 + solady 0.1.26, from soldeer.lock
 forge build
-forge test                   # 55 tests, 8 suites
+forge test                   # 57 tests, 8 suites
 forge snapshot               # regenerates .gas-snapshot
 bash script/e2e-anvil.sh     # live end-to-end on anvil: submit → anchor → notarize
 ```
@@ -36,6 +36,7 @@ Dependencies are **Soldeer-managed only** (no git submodules, no npm):
 | [OpenZeppelin](https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable) `contracts-upgradeable` | `v5.7.0` (git tag) | `UUPSUpgradeable` (proxy utils) — the import prefix for upgradeable components; note its `UUPSUpgradeable.sol` is a 5-line forwarder into the plain package |
 | [OpenZeppelin](https://github.com/OpenZeppelin/openzeppelin-contracts) | `v5.7.0` (git tag) | the real `UUPSUpgradeable` + `ERC1967Proxy` (deploy path), and the transitive target of the forwarder above |
 | forge-std | `v1.17.0` (git tag) | tests + scripts |
+| Solidity compiler | floor `^0.8.27` (compiled with `0.8.33`) | `require(condition, CustomError())` only joined the **legacy** pipeline in `0.8.27` — in `0.8.26` it existed for via-IR only, so `^0.8.26` would not compile this code |
 | Chainlink CCIP interfaces | vendored subset of `smartcontractkit/ccip @ 171f9f0` | only `Client`, `IRouterClient`, `IAny2EVMMessageReceiver` — re-verify against upstream before a real lane |
 
 ---
@@ -163,13 +164,13 @@ production-shaped numbers, not direct-call ones.
 |---|---|---:|---|
 | `submitArticle` — first leaf (cold slots) | relayer / writer | **130,075** | opens the batch window |
 | `submitArticle` — steady state | relayer / writer | **88,062** | 1h per-author rate limit applies |
-| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **126,472** | ≈98k fixed window/tree overhead |
-| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **675,342** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
+| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **126,460** | ≈98k fixed window/tree overhead |
+| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **675,330** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
 | `verifyAgainstBatch` — 10-leaf root | reader | **14,995** | an `eth_call` costs you nothing |
 | `notarize` — our side (K-gated) | keeper | **38,598** | + CCIP fee + the router's own execution |
 | gateway `submitArticle` — our side | writer | **37,148** | + L1 gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 13,298 B runtime, `SubmissionGateway` 5,622 B
+Contract sizes: `ArticleAnchor` 13,293 B runtime, `SubmissionGateway` 5,622 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
@@ -189,7 +190,7 @@ affordable where per-article onchain storage would not be.
 
 ## Attack matrix ↔ tests
 
-55 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
+57 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
 
 | # | Threat | Defense | Test(s) |
 |---|---|---|---|
@@ -479,7 +480,8 @@ src/
                            events) + all 15 custom errors + every API NatSpec —
                            ArticleAnchor inherits it, so the compiler keeps docs
                            and ABI in lockstep. Every failure is a typed error
-                           declared here, never a revert string
+                           declared here, never a revert string: each guard is
+                           written `require(condition, Err())`
     ISubmissionGateway.sol same for SubmissionGateway (10 typed errors; it also
                            fixes the 68-byte `receiveRoot` wire format the hub
                            encodes against)
@@ -496,7 +498,8 @@ test/
   lib/NaiveMerkle.sol   independent reference Merkle (differential)
   mocks/                MockRouter, ArticleAnchorV2Stub
 .gas-snapshot            forge snapshot output (regenerate with `forge snapshot`)
-soldeer.lock             dependency pins (solady v0.1.26, forge-std v1.17.0)
+soldeer.lock             dependency pins (solady v0.1.26, forge-std v1.17.0,
+                         openzeppelin-contracts + -upgradeable v5.7.0)
 ```
 
 ## Known limitations

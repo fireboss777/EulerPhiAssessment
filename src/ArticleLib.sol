@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 /// @notice The universal article envelope: what a writer signs (EIP-712 struct)
 /// and what the hub journals as a leaf. Content lives off-chain (IPFS); only

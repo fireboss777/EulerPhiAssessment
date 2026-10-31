@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 import {EIP712} from "solady/utils/EIP712.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -68,8 +68,9 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     mapping(uint256 => uint256) public anchoredAtBlock;
     /// @inheritdoc IArticleAnchor
     uint256 public anchoredBatches;
+
     modifier onlyAdmin() {
-        if (msg.sender != admin) revert AdminOnly();
+        require(msg.sender == admin, AdminOnly());
         _;
     }
 
@@ -85,7 +86,7 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
 
     /// @inheritdoc IArticleAnchor
     function initialize(address admin_, address router_, uint64 chainSelector_) external initializer {
-        if (admin_ == address(0)) revert ZeroAdmin();
+        require(admin_ != address(0), ZeroAdmin());
         admin = admin_;
         router = router_;
         ethChainSelector = chainSelector_;
@@ -105,7 +106,7 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     }
 
     function _authorizeUpgrade(address) internal view override {
-        if (msg.sender != admin) revert AdminOnly();
+        require(msg.sender == admin, AdminOnly());
     }
 
     // ---------------------------------------------------------------------
@@ -118,20 +119,20 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     }
 
     function _submit(bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload) internal {
-        if (block.timestamp > payload.deadline) revert Expired();
-        if (keccak256(abi.encode(payload)) != leafDigest) revert DigestMismatch();
+        require(block.timestamp <= payload.deadline, Expired());
+        require(keccak256(abi.encode(payload)) == leafDigest, DigestMismatch());
         // Canonical 65-byte (r, s, v) only; low-s enforced (Solady's recover
         // deliberately accepts malleable s, so the gate lives here).
-        if (sig.length != 65) revert InvalidSignatureLength();
+        require(sig.length == 65, InvalidSignatureLength());
         bytes32 s;
         assembly ("memory-safe") {
             s := mload(add(sig, 0x40)) // `s` at offset 0x40 of the bytes payload
         }
-        if (uint256(s) > _HIGH_S_MAX) revert NonCanonicalSignature();
+        require(uint256(s) <= _HIGH_S_MAX, NonCanonicalSignature());
         bytes32 digest = _hashTypedData(ArticleLib.hashStruct(payload));
-        if (ECDSA.recover(digest, sig) != payload.author) revert NotAuthor();
-        if (block.timestamp < lastSubmit[payload.author] + RATE_LIMIT) revert RateLimited();
-        if (usedUuid[payload.author][payload.uuid]) revert DuplicateUuid();
+        require(ECDSA.recover(digest, sig) == payload.author, NotAuthor());
+        require(block.timestamp >= lastSubmit[payload.author] + RATE_LIMIT, RateLimited());
+        require(!usedUuid[payload.author][payload.uuid], DuplicateUuid());
 
         usedUuid[payload.author][payload.uuid] = true;
         lastSubmit[payload.author] = block.timestamp;
@@ -153,9 +154,9 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
 
     /// @inheritdoc IArticleAnchor
     function consumeSubmittedArticle(Client.Any2EVMMessage calldata message) public {
-        if (msg.sender != address(router)) revert NotRouter();
-        if (message.sourceChainSelector != ethChainSelector) revert BadChain();
-        if (abi.decode(message.sender, (address)) != gateway) revert BadSender();
+        require(msg.sender == address(router), NotRouter());
+        require(message.sourceChainSelector == ethChainSelector, BadChain());
+        require(abi.decode(message.sender, (address)) == gateway, BadSender());
         (bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload) =
             abi.decode(message.data, (bytes32, bytes, ArticleSubmission));
         _submit(leafDigest, sig, payload);
@@ -164,8 +165,8 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     /// @inheritdoc IArticleAnchor
     function notarize(uint256 batchIndex) external payable {
         uint256 anchoredAt = anchoredAtBlock[batchIndex];
-        if (anchoredAt == 0) revert NoBatch();
-        if (block.number < anchoredAt + NOTARY_K) revert NotFinal();
+        require(anchoredAt != 0, NoBatch());
+        require(block.number >= anchoredAt + NOTARY_K, NotFinal());
 
         Client.EVM2AnyMessage memory m = Client.EVM2AnyMessage({
             receiver: abi.encode(gateway),
@@ -186,8 +187,9 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     function anchorNextBatch() external returns (bytes32 root) {
         uint256 start = lastAnchoredIndex;
         uint256 pending = journal.length - start;
-        bool ready = pending > 0 && (pending >= MIN_BATCH || block.timestamp >= batchOpenedAt + BATCH_DEADLINE);
-        if (!ready) revert BatchNotReady();
+        require(
+            pending > 0 && (pending >= MIN_BATCH || block.timestamp >= batchOpenedAt + BATCH_DEADLINE), BatchNotReady()
+        );
 
         uint256 count = pending > MAX_BATCH ? MAX_BATCH : pending;
         uint256 end = start + count;
