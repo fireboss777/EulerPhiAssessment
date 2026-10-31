@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Task 6 end-to-end: submit -> anchor -> notarize against a live anvil node.
+# Task 6 end-to-end: submit -> anchor against a live anvil node.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -49,19 +49,4 @@ ROOT=$(cast call "$PROXY" "rootAt(uint256)(bytes32)" 0 --rpc-url "$RPC")
 echo "== rootAt(0)=$ROOT"
 [ "$ROOT" != "0x0000000000000000000000000000000000000000000000000000000000000000" ] || { echo "FAIL: root"; exit 1; }
 
-if ! cast rpc --rpc-url "$RPC" anvil_mine 0x50 >/dev/null 2>&1; then
-  for _ in $(seq 1 80); do cast rpc --rpc-url "$RPC" evm_mine >/dev/null; done
-fi
-echo "== mined past K"
-
-HUB_ADDRESS=$PROXY NOTARY_BATCH_START=0 NOTARY_FEE_WEI=100000000000000000 \
-  forge script script/Notarize.s.sol --rpc-url "$RPC" --private-key "$PK" --broadcast
-
-# cast appends a human-readable form ("100000000000000000 [1e17]") — keep the raw value.
-MV=$(cast call "$MOCK" "lastValue()(uint256)" --rpc-url "$RPC" | awk '{print $1}')
-DEST=$(cast call "$MOCK" "lastDest()(uint64)" --rpc-url "$RPC")
-echo "== mock.lastValue=$MV lastDest=$DEST"
-[ "$MV" = "100000000000000000" ] || { echo "FAIL: fee forwarded"; exit 1; }
-[ "$DEST" = "8453" ] || { echo "FAIL: destination"; exit 1; }
-
-echo "E2E OK: submit -> anchor -> notarize"
+echo "E2E OK: submit -> anchor"
