@@ -2,7 +2,7 @@
 pragma solidity ^0.8.27;
 
 /// @title IArticleAnchorGetters — the hub's read API, declared in exactly ONE place.
-/// @notice The 14 field getters over the hub's ERC-7201 namespace. Declared
+/// @notice The 13 field getters over the hub's ERC-7201 namespace. Declared
 /// here, implemented once in `ArticleAnchorGetters`, which `ArticleAnchor`
 /// inherits — so `admin()` is a declaration in exactly ONE file and code in
 /// exactly ONE contract, with nothing anywhere else holding a copy.
@@ -20,7 +20,7 @@ interface IArticleAnchorGetters {
     /// — deploy with a multisig or timelock from day one.
     function admin() external view returns (address);
 
-    /// @notice Chainlink Router used for both CCIP lanes; also the gate that
+    /// @notice Chainlink Router of the CCIP lane; also the gate that
     /// must be `msg.sender` for any inbound delivery.
     function router() external view returns (address);
 
@@ -28,7 +28,7 @@ interface IArticleAnchorGetters {
     function ethChainSelector() external view returns (uint64);
 
     /// @notice The pinned L1 `SubmissionGateway`: sender whitelist for inbound
-    /// submissions and receiver of notarized roots. Wired post-deploy.
+    /// submissions. Wired post-deploy.
     function gateway() external view returns (address);
 
     /// @notice Leaf `i` of the append-only journal (`keccak256(abi.encode(payload))`).
@@ -61,11 +61,6 @@ interface IArticleAnchorGetters {
     /// @notice Frozen Merkle root of batch `batchIndex`, derived by the contract.
     /// @param batchIndex Anchored batch index.
     function rootAt(uint256 batchIndex) external view returns (bytes32);
-
-    /// @notice Block at which batch `batchIndex` was anchored — the notary's
-    /// `K`-confirmation clock starts here.
-    /// @param batchIndex Anchored batch index.
-    function anchoredAtBlock(uint256 batchIndex) external view returns (uint256);
 
     /// @notice Number of batches anchored so far (also the next batch index).
     function anchoredBatches() external view returns (uint256);

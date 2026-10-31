@@ -4,7 +4,6 @@ pragma solidity ^0.8.27;
 import { ArticleAnchor } from "../src/ArticleAnchor.sol";
 import { SubmissionGateway } from "../src/SubmissionGateway.sol";
 import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
-import { ArticleLib } from "../src/libraries/ArticleLib.sol";
 import { MockRouter } from "./mocks/MockRouter.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 import { console } from "forge-std/console.sol";
@@ -65,25 +64,6 @@ contract GasTest is ArticleTestBase {
         assertTrue(ok, "proof must verify");
         console.log("verify (10-leaf batch)    ", used);
         assertLt(used, 17_000, "verify cost drifted up");
-    }
-
-    function test_gasNotarize() public {
-        MockRouter mock = new MockRouter();
-        mock.setCapture(false); // forensics off: measure the keeper's own cost
-        ArticleAnchor hub = _newHub(address(mock));
-        _seedBatch(hub, 10);
-        hub.anchorNextBatch();
-        vm.roll(hub.anchoredAtBlock(0) + ArticleLib.NOTARY_K);
-        vm.deal(address(this), 1 ether);
-        vm.cool(address(hub));
-        vm.cool(address(mock));
-
-        uint256 g0 = gasleft();
-        hub.notarize{ value: mock.fee() }(0);
-        uint256 used = g0 - gasleft();
-
-        console.log("notarize (incl. ccipSend) ", used);
-        assertLt(used, 52_000, "notarize cost drifted up");
     }
 
     function test_gasGatewaySubmit() public {

@@ -21,7 +21,6 @@ contract BatchTest is ArticleTestBase {
         assertTrue(hub.rootAt(0) != bytes32(0), "root anchored");
         assertEq(hub.lastAnchoredIndex(), 9, "index advanced");
         assertEq(hub.anchoredBatches(), 1, "one batch");
-        assertEq(hub.anchoredAtBlock(0), block.number, "anchor block recorded");
     }
 
     function test_anchorAtMaxBatch() public {

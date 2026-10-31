@@ -4,8 +4,6 @@ pragma solidity ^0.8.27;
 import { ArticleAnchor } from "../src/ArticleAnchor.sol";
 import { Client } from "../src/interfaces/Client.sol";
 import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
-import { ISubmissionGateway } from "../src/interfaces/ISubmissionGateway.sol";
-import { ArticleLib } from "../src/libraries/ArticleLib.sol";
 import { MockRouter } from "./mocks/MockRouter.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 
@@ -89,42 +87,6 @@ contract CCIPTest is ArticleTestBase {
 
         vm.expectRevert(IArticleAnchor.NotRouter.selector);
         hub.ccipReceive(m);
-    }
-
-    // ------------------------------------------------------------------
-    // Outbound notarization (hub -> L1 gateway), K-confirmation gate
-    // ------------------------------------------------------------------
-
-    function test_notarizeUnanchoredBatchReverts() public {
-        vm.expectRevert(IArticleAnchor.NoBatch.selector);
-        hub.notarize{ value: 0 }(0);
-    }
-
-    function test_notarizeRevertsBeforeK() public {
-        _seedBatch(hub, 10);
-        hub.anchorNextBatch();
-        uint256 anchoredAt = hub.anchoredAtBlock(0);
-        vm.roll(anchoredAt + ArticleLib.NOTARY_K - 1);
-
-        vm.expectRevert(IArticleAnchor.NotFinal.selector);
-        hub.notarize{ value: 0.01 ether }(0);
-    }
-
-    function test_notarizeSendsAfterK() public {
-        _seedBatch(hub, 10);
-        hub.anchorNextBatch();
-        vm.roll(hub.anchoredAtBlock(0) + ArticleLib.NOTARY_K);
-        bytes32 root = hub.rootAt(0);
-
-        hub.notarize{ value: 0.02 ether }(0);
-
-        assertEq(mock.lastDest(), TEST_SEL, "destination = gateway chain");
-        assertEq(mock.lastReceiver(), GATEWAY, "receiver = gateway");
-        assertEq(mock.lastValue(), 0.02 ether, "fee value forwarded");
-        assertEq(
-            mock.lastData(), abi.encodeCall(ISubmissionGateway.receiveRoot, (0, root)), "payload = (batchIndex, root)"
-        );
-        assertGt(mock.lastExtraArgs().length, 0, "gas limit extraArgs attached");
     }
 
     function _signedLeaf(uint256 key, uint256 salt)

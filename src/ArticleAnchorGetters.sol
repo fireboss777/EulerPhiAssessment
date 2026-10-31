@@ -5,10 +5,10 @@ import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
 import { IArticleAnchorGetters } from "./interfaces/IArticleAnchorGetters.sol";
 import { ArticleLib } from "./libraries/ArticleLib.sol";
 
-/// @title ArticleAnchorGetters — the hub's 14 read getters, implemented once, here.
+/// @title ArticleAnchorGetters — the hub's 13 read getters, implemented once, here.
 /// @notice `ArticleAnchor` inherits this contract instead of writing the
 /// getters itself, so the hub main contract keeps only protocol behaviour
-/// (lifecycle, submission, anchoring, notarizing).
+/// (lifecycle, submission, anchoring).
 /// @dev Direct reads: every body is an `sload` through `ArticleLib.getStorage()`,
 /// i.e. in the account that owns the namespace — the only account that CAN read
 /// it. The pointer and its slot constant both live in `ArticleLib`, so this
@@ -74,11 +74,6 @@ abstract contract ArticleAnchorGetters is IArticleAnchorGetters {
     /// @inheritdoc IArticleAnchorGetters
     function rootAt(uint256 batchIndex) external view returns (bytes32) {
         return ArticleLib.getStorage().rootAt[batchIndex];
-    }
-
-    /// @inheritdoc IArticleAnchorGetters
-    function anchoredAtBlock(uint256 batchIndex) external view returns (uint256) {
-        return ArticleLib.getStorage().anchoredAtBlock[batchIndex];
     }
 
     /// @inheritdoc IArticleAnchorGetters

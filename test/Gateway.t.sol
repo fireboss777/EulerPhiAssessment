@@ -6,7 +6,6 @@ import { SubmissionGateway } from "../src/SubmissionGateway.sol";
 import { Client } from "../src/interfaces/Client.sol";
 import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
 import { ISubmissionGateway } from "../src/interfaces/ISubmissionGateway.sol";
-import { ArticleLib } from "../src/libraries/ArticleLib.sol";
 import { MockRouter } from "./mocks/MockRouter.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 
@@ -146,36 +145,6 @@ contract GatewayTest is ArticleTestBase {
 
         assertEq(hub.journalLength(), 1, "payload journaled via gateway lane");
         assertEq(hub.journal(0), leaf, "leaf roundtrip through both contracts");
-    }
-
-    // ------------------------------------------------------------------
-    // Wire-format round trip: hub notarize encode -> (router) -> gateway decode.
-    // Send-side assertions alone cannot see a decoder mismatch — they check
-    // the payload against the very interface the sender used.
-    // ------------------------------------------------------------------
-
-    function test_notarizeRoundTripIntoGateway() public {
-        ArticleAnchor hub = _deployHub(address(this), address(mock), BASE_SEL);
-        SubmissionGateway gw2 = new SubmissionGateway(address(mock), address(hub), BASE_SEL);
-        hub.setGateway(address(gw2)); // production wiring, not a dummy address
-        _seedBatch(hub, 10);
-        hub.anchorNextBatch();
-        vm.roll(hub.anchoredAtBlock(0) + ArticleLib.NOTARY_K);
-        vm.deal(address(this), 1 ether);
-
-        hub.notarize{ value: mock.fee() }(0); // hub-side encode (encodeCall)
-
-        Client.Any2EVMMessage memory delivered = Client.Any2EVMMessage({
-            messageId: mock.lastMessageId(),
-            sourceChainSelector: BASE_SEL,
-            sender: abi.encode(address(hub)),
-            data: mock.lastData(), // exactly the bytes the hub produced
-            destTokenAmounts: new Client.EVMTokenAmount[](0)
-        });
-        mock.deliver(address(gw2), delivered);
-
-        assertEq(gw2.notarizedRoot(0), hub.rootAt(0), "root roundtrip through both contracts");
-        assertEq(gw2.nextBatch(), 1, "cursor advanced");
     }
 
     function test_receiveRootRejectsWrongWireFormat() public {

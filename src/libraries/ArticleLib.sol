@@ -38,12 +38,6 @@ library ArticleLib {
     /// @dev floor(N/2) of secp256k1: signatures must be canonical low-s (EIP-2).
     uint256 public constant HIGH_S_MAX = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
 
-    /// @notice L2 block confirmations required before a root may be notarized upward.
-    uint256 public constant NOTARY_K = 64;
-
-    /// @notice Receiver-side gas limit attached to the CCIP notary message.
-    uint256 public constant NOTARY_GAS_LIMIT = 200_000;
-
     /// @dev EIP-712 `hashStruct` (domain binding is applied by the caller via
     /// `_hashTypedData`; this is the chain-agnostic struct commitment).
     /// @dev Hand-rolled instead of `keccak256(abi.encode(...))` (`forge lint:

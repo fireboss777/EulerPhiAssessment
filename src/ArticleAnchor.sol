@@ -4,8 +4,6 @@ pragma solidity ^0.8.27;
 import { ArticleAnchorGetters } from "./ArticleAnchorGetters.sol";
 import { Client } from "./interfaces/Client.sol";
 import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
-import { IRouterClient } from "./interfaces/IRouterClient.sol";
-import { ISubmissionGateway } from "./interfaces/ISubmissionGateway.sol";
 import { ArticleLib } from "./libraries/ArticleLib.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -66,30 +64,12 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
     }
 
     // ---------------------------------------------------------------------
-    // CCIP lanes
+    // CCIP lane — inbound only (L1 gateway -> hub)
     // ---------------------------------------------------------------------
 
     /// @inheritdoc IArticleAnchor
     function ccipReceive(Client.Any2EVMMessage calldata message) external {
         _consumeSubmittedArticle(message);
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function notarize(uint256 batchIndex) external payable {
-        Storage storage $ = ArticleLib.getStorage();
-        uint256 anchoredAt = $.anchoredAtBlock[batchIndex];
-        require(anchoredAt != 0, NoBatch());
-        require(block.number >= anchoredAt + ArticleLib.NOTARY_K, NotFinal());
-
-        Client.EVM2AnyMessage memory m = Client.EVM2AnyMessage({
-            receiver: abi.encode($.gateway),
-            data: abi.encodeCall(ISubmissionGateway.receiveRoot, (batchIndex, $.rootAt[batchIndex])),
-            tokenAmounts: new Client.EVMTokenAmount[](0),
-            feeToken: address(0),
-            extraArgs: Client._argsToBytesV1(ArticleLib.NOTARY_GAS_LIMIT)
-        });
-        bytes32 messageId = IRouterClient($.router).ccipSend{ value: msg.value }($.ethChainSelector, m);
-        emit Notarized(batchIndex, $.rootAt[batchIndex], messageId);
     }
 
     // ---------------------------------------------------------------------
@@ -113,7 +93,6 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
 
         uint256 batchIndex = $.anchoredBatches;
         $.rootAt[batchIndex] = root;
-        $.anchoredAtBlock[batchIndex] = block.number;
         $.anchoredBatches = batchIndex + 1;
         $.lastAnchoredIndex = end;
 
@@ -121,7 +100,7 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
     }
 
     // ---------------------------------------------------------------------
-    // Views — verification (the 14 state getters live in `ArticleAnchorGetters`)
+    // Views — verification (the 13 state getters live in `ArticleAnchorGetters`)
     // ---------------------------------------------------------------------
 
     /// @inheritdoc IArticleAnchor

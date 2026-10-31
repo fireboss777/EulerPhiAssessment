@@ -14,7 +14,7 @@ import { Client } from "./Client.sol";
 ///  - role-gated publishing: gate submission on an `isAuthor[author]` registry;
 ///  - meta-tx sponsorship: wrap `submitArticle` behind a forwarder.
 ///
-/// Policy constants (`MIN_BATCH`, `RATE_LIMIT`, `NOTARY_K` …) are NOT here
+/// Policy constants (`MIN_BATCH`, `RATE_LIMIT` …) are NOT here
 /// either: they live as `public constant`s in `ArticleLib`. Solidity forbids
 /// variables in interfaces (Error 8274), and a contract getter forwarding a
 /// value the compiler inlines would be pure indirection.
@@ -25,8 +25,8 @@ import { Client } from "./Client.sol";
 /// `proxiableUUID()`, `UPGRADE_INTERFACE_VERSION()` (OpenZeppelin
 /// `UUPSUpgradeable`); and the `Upgraded` event — emitted by OZ's inlined
 /// `ERC1967Utils`, so it IS part of this contract's ABI without being
-/// declared by us. Everything else — 7 functions and 3 events — is declared
-/// below. The 14 read getters are deliberately NOT here: they live in
+/// declared by us. Everything else — 6 functions and 2 events — is declared
+/// below. The 13 read getters are deliberately NOT here: they live in
 /// `IArticleAnchorGetters`, brought in by `ArticleAnchorGetters`, which this
 /// contract also inherits — the union of the two IS its complete ABI.
 interface IArticleAnchor {
@@ -48,7 +48,7 @@ interface IArticleAnchor {
         /// @dev Slot 1, bytes 0..20.
         address router;
         /// @dev Slot 1, bytes 20..28 — packs with `router` (20 + 8 <= 32). This
-        /// pairing is the original contract layout, byte for byte: `notarize`
+        /// pairing is the original contract layout, byte for byte: `ccipReceive`
         /// reads both, so they must share one cold word.
         uint64 ethChainSelector;
         /// @dev Slot 2.
@@ -66,9 +66,7 @@ interface IArticleAnchor {
         uint256 lastAnchoredIndex;
         /// @dev Slot 8 — mapping base; value at `keccak256(abi.encode(uint256(batchIndex), baseSlot))`.
         mapping(uint256 => bytes32) rootAt;
-        /// @dev Slot 9 — mapping base (value slots are never packed).
-        mapping(uint256 => uint256) anchoredAtBlock;
-        /// @dev Slot 10.
+        /// @dev Slot 9.
         uint256 anchoredBatches;
     }
 
@@ -100,10 +98,6 @@ interface IArticleAnchor {
     /// @param start Journal offset of the first leaf in this batch.
     /// @param end Journal offset one past the last leaf in this batch.
     event RootAnchored(uint256 indexed batchIndex, bytes32 root, uint256 start, uint256 end);
-
-    /// @notice A batch root was sent to the L1 gateway over CCIP.
-    /// @param messageId Chainlink's message id for the notarization.
-    event Notarized(uint256 indexed batchIndex, bytes32 root, bytes32 messageId);
 
     // ---------------------------------------------------------------------
     // Errors (thrown by the implementation; declared here so the ABI and the
@@ -137,10 +131,6 @@ interface IArticleAnchor {
     error BadSender();
     /// @notice The batch is neither big enough nor old enough to close.
     error BatchNotReady();
-    /// @notice No such anchored batch — nothing to notarize.
-    error NoBatch();
-    /// @notice Batch has not reached `NOTARY_K` confirmations yet (reorg gate).
-    error NotFinal();
 
     // ---------------------------------------------------------------------
     // Lifecycle
@@ -176,7 +166,7 @@ interface IArticleAnchor {
     function submitArticle(bytes32 leafDigest, bytes calldata sig, ArticleSubmission calldata payload) external;
 
     // ---------------------------------------------------------------------
-    // CCIP lanes
+    // CCIP lane — inbound only (L1 gateway -> hub)
     // ---------------------------------------------------------------------
 
     /// @notice Standard `IAny2EVMMessageReceiver` entry — what a real Router
@@ -186,14 +176,6 @@ interface IArticleAnchor {
     /// contract cannot journal anything. Shares every check with the direct
     /// lane: one `_submit`, one set of rules.
     function ccipReceive(Client.Any2EVMMessage calldata message) external;
-
-    /// @notice Notarize an anchored batch root to the L1 gateway via CCIP.
-    /// Permissionless; the caller funds the fee (`msg.value`) — keepers pay
-    /// for what they send, no protocol float to drain.
-    /// @dev Reverts `NoBatch()` for an unanchored index and `NotFinal()` until
-    /// `block.number >= anchoredAtBlock[batchIndex] + NOTARY_K` (reorg gate).
-    /// @param batchIndex Index of the batch whose frozen root is being sent.
-    function notarize(uint256 batchIndex) external payable;
 
     // ---------------------------------------------------------------------
     // Batching & anchoring
