@@ -28,6 +28,48 @@ import {Client} from "./Client.sol";
 /// declared by us. Everything else — 28 functions and 3 events — is declared
 /// below.
 interface IArticleAnchor {
+    /// @notice The hub's entire persistent state, in a single ERC-7201
+    /// namespace. The implementation declares NO state variable of its own:
+    /// every read and write goes through this struct at the fixed slot
+    /// `keccak256(abi.encode(uint256(keccak256("eulerphi.storage.ArticleAnchor")) - 1)) & ~bytes32(uint256(0xff))`
+    /// — frozen as a literal in `ArticleAnchor` (inline assembly accepts only
+    /// number constants) and proven equal to this formula by
+    /// `test_storageLivesAtErc7201Slot`. Why it is practical: a future base
+    /// contract cannot collide with this layout, the layout is auditable as
+    /// one block in this file, and reordering/adding fields is a deliberate,
+    /// namespace-local decision instead of a global slot lottery.
+    ///
+    /// @custom:storage-location erc7201:eulerphi.storage.ArticleAnchor
+    struct Storage {
+        /// @dev Slot 0.
+        address admin;
+        /// @dev Slot 1, bytes 0..20.
+        address router;
+        /// @dev Slot 1, bytes 20..28 — packs with `router` (20 + 8 <= 32). This
+        /// pairing is the original contract layout, byte for byte: `notarize`
+        /// reads both, so they must share one cold word.
+        uint64 ethChainSelector;
+        /// @dev Slot 2.
+        address gateway;
+        /// @dev Slot 3 — the word holds the array length; element `i` lives at
+        /// `keccak256(abi.encode(uint256(3), baseSlot)) + i`.
+        bytes32[] journal;
+        /// @dev Slot 4 — double-mapping base; entry slots derive from it.
+        mapping(address => mapping(bytes32 => bool)) usedUuid;
+        /// @dev Slot 5.
+        mapping(address => uint256) lastSubmit;
+        /// @dev Slot 6.
+        uint256 batchOpenedAt;
+        /// @dev Slot 7.
+        uint256 lastAnchoredIndex;
+        /// @dev Slot 8 — mapping base; value at `keccak256(abi.encode(uint256(batchIndex), baseSlot))`.
+        mapping(uint256 => bytes32) rootAt;
+        /// @dev Slot 9 — mapping base (value slots are never packed).
+        mapping(uint256 => uint256) anchoredAtBlock;
+        /// @dev Slot 10.
+        uint256 anchoredBatches;
+    }
+
     // ---------------------------------------------------------------------
     // Events
     // ---------------------------------------------------------------------

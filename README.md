@@ -162,19 +162,19 @@ production-shaped numbers, not direct-call ones.
 
 | Operation | Who pays | Gas (marginal) | Notes |
 |---|---|---:|---|
-| `submitArticle` — first leaf (cold slots) | relayer / writer | **130,075** | opens the batch window |
-| `submitArticle` — steady state | relayer / writer | **88,062** | 1h per-author rate limit applies |
-| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **126,460** | ≈98k fixed window/tree overhead |
-| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **675,330** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
-| `verifyAgainstBatch` — 10-leaf root | reader | **14,995** | an `eth_call` costs you nothing |
-| `notarize` — our side (K-gated) | keeper | **38,598** | + CCIP fee + the router's own execution |
+| `submitArticle` — first leaf (cold slots) | relayer / writer | **130,169** | opens the batch window |
+| `submitArticle` — steady state | relayer / writer | **88,150** | 1h per-author rate limit applies |
+| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **126,654** | ≈98k fixed window/tree overhead |
+| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **676,664** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
+| `verifyAgainstBatch` — 10-leaf root | reader | **15,075** | an `eth_call` costs you nothing |
+| `notarize` — our side (K-gated) | keeper | **38,680** | + CCIP fee + the router's own execution |
 | gateway `submitArticle` — our side | writer | **37,148** | + L1 gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 13,293 B runtime, `SubmissionGateway` 5,622 B
+Contract sizes: `ArticleAnchor` 13,782 B runtime, `SubmissionGateway` 5,705 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
-rollup's L1 data component. At 88,062 gas: 0.01 gwei ≈ 0.88 µETH, 0.1 gwei ≈
+rollup's L1 data component. At 88,150 gas: 0.01 gwei ≈ 0.88 µETH, 0.1 gwei ≈
 8.8 µETH — i.e. **fractions of a cent to a few cents per article** at an ETH
 price of $3k, before the (small, calldata-based) rollup data fee. Numbers are
 examples, not promises: prices move, and the two CCIP rows above are *our*
@@ -213,7 +213,7 @@ affordable where per-article onchain storage would not be.
 | 15 | Prove a leaf that isn't in the batch (or is from another batch) | `MerkleProofLib` against the frozen root | `Batch.t.sol::test_verifyAgainstBatchFalse`, `Batch.t.sol::test_verifyAgainstBatchTrue` |
 | 16 | Merkle builder/verifier disagree (implementation bug) | differential vs hand-written `NaiveMerkle` + fuzz | `MerkleDifferential.t.sol::test_matchesNaiveReference` (256 runs), `test_oddLeafCounts`, `test_singleLeafRoot` |
 | 17 | Upgrade by anyone, or a second upgrade authority hiding beside the UUPS path | `_authorizeUpgrade` admin-only; the OZ `ERC1967Proxy` has **no admin entry at all** (ERC-1967 admin slot stays `0`); OZ `onlyProxy` blocks any attempt on the bare implementation | `Upgrade.t.sol::test_nonAdminUpgradeReverts`, `test_proxyHasNoAdminSlot`, `test_bareImplementationUpgradeReverts` |
-| 18 | Re-initialize (proxy *or* bare implementation), hijack gateway wiring, corrupt storage on upgrade | OZ `initializer` lock (bare impl `_disableInitializers()`-locked at construction) + zero-admin rejection, `setGateway` admin-only, append-only layout | `Upgrade.t.sol::test_initializeTwiceReverts`, `test_bareImplementationCannotBeInitialized`, `test_initializeRejectsZeroAdmin`, `test_setGatewayOnlyAdmin`, `test_journalPreservedAcrossUpgrade` |
+| 18 | Re-initialize (proxy *or* bare implementation), hijack gateway wiring, corrupt storage on upgrade | OZ `initializer` lock (bare impl `_disableInitializers()`-locked at construction) + zero-admin rejection, `setGateway` admin-only, ERC-7201 namespaced layout, append-only journal | `Upgrade.t.sol::test_initializeTwiceReverts`, `test_bareImplementationCannotBeInitialized`, `test_initializeRejectsZeroAdmin`, `test_setGatewayOnlyAdmin`, `test_journalPreservedAcrossUpgrade` |
 | 19 | Spam one author's journal | `RATE_LIMIT = 1h` | `Submit.t.sol::test_rateLimit1hReverts` |
 | 20 | Submit an expired article | `block.timestamp ≤ deadline`, checked first on both lanes | `Submit.t.sol::test_expiredDeadlineReverts` |
 | 21 | Run off with / overcharge the gateway fee | `getFee` quote, `msg.value ≥ fee`, refund excess, gateway retains 0 | `Gateway.t.sol::test_insufficientFeeReverts`, `test_excessRefunded` |
@@ -296,6 +296,23 @@ mirrors, cross-chain copies and independent re-hosting. For a *publishing*
 product the proof is the point, so the journal wins. The rate limit, `uuid`
 dedup and batch window live in mappings precisely because those are
 *bookkeeping*, not *claims*.
+
+**ERC-7201 namespaced storage.** Neither contract declares a state variable:
+each one's whole layout is a `Storage` struct on its interface, addressed at
+`keccak256(abi.encode(uint256(keccak256("eulerphi.storage.ArticleAnchor")) - 1)) & ~bytes32(uint256(0xff))`
+and reached through a single private `_getStorage()` pointer (the literal is
+frozen in the contract because inline assembly takes only number constants, and
+`test_storageLivesAtErc7201Slot` recomputes the formula from the namespace id
+and reads it raw — literal, id and contents must all agree). Payoffs: a future
+base contract or a field reordering cannot collide with this layout, because a
+namespace owns its own region of the slot space; the layout is auditable as one
+commented block instead of being implied by declaration order across the file;
+and `admin`/`router`/`ethChainSelector`/`gateway` keep exactly the packing the
+linear layout gave them (`router` + `ethChainSelector` share word 1, which is
+what `notarize` reads together — the first migration attempt split them and
+paid +2,100 gas per notarization until the storage layout caught it). This is
+breaking for a proxy deployed at the old linear slots; no such deployment
+exists, and there is deliberately no dual-read migration.
 
 **Roles / allowlist publishing — deliberately not implemented.** The spec
 scoped role-based publishing to a comment + README extension point. The code
@@ -488,12 +505,14 @@ src/
                            `view` getters last) + all 15 custom errors + every
                            API NatSpec —
                            ArticleAnchor inherits it, so the compiler keeps docs
-                           and ABI in lockstep. Every failure is a typed error
-                           declared here, never a revert string: each guard is
-                           written `require(condition, Err())`
-    ISubmissionGateway.sol same for SubmissionGateway (10 typed errors; it also
-                           fixes the 68-byte `receiveRoot` wire format the hub
-                           encodes against)
+                           and ABI in lockstep. Also owns the ERC-7201
+                           `Storage` struct: the hub's ENTIRE state layout,
+                           documented field by field. Every failure is a typed
+                           error declared here, never a revert string: each
+                           guard is written `require(condition, Err())`
+    ISubmissionGateway.sol same for SubmissionGateway (10 typed errors + its
+                           ERC-7201 `Storage` struct; it also fixes the 68-byte
+                           `receiveRoot` wire format the hub encodes against)
     Client.sol, IRouterClient.sol, IAny2EVMMessageReceiver.sol
                            vendored CCIP subset @ commit 171f9f0
 script/

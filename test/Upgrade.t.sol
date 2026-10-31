@@ -8,6 +8,7 @@ import {IArticleAnchor} from "../src/interfaces/IArticleAnchor.sol";
 import {ArticleAnchor} from "../src/ArticleAnchor.sol";
 import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
 import {ArticleAnchorV2Stub} from "./mocks/ArticleAnchorV2Stub.sol";
+import {SubmissionGateway} from "../src/SubmissionGateway.sol";
 
 contract UpgradeTest is ArticleTestBase {
     function test_nonAdminUpgradeReverts() public {
@@ -120,6 +121,43 @@ contract UpgradeTest is ArticleTestBase {
             "impl slot must point at the implementation"
         );
         assertEq(hub.admin(), address(this), "app state lives behind the proxy");
+    }
+
+    /// @dev ERC-7201 proof: recompute each namespace slot FROM ITS ID and read
+    /// it raw. This pins two things at once — the frozen `_STORAGE_SLOT`
+    /// literal inside each contract really is the ERC-7201 formula (they are
+    /// two independent computations that must agree), and the struct really
+    /// lives there, packing included: `router` (20B) + `ethChainSelector` (8B)
+    /// share word 1 of the hub namespace, exactly as the pre-migration
+    /// contract layout packed them.
+    function test_storageLivesAtErc7201Slot() public {
+        (ArticleAnchor hub,) = _proxyHub(address(this), address(0xACE), 8453);
+        hub.setGateway(address(0x9999));
+
+        bytes32 hubSlot =
+            keccak256(abi.encode(uint256(keccak256("eulerphi.storage.ArticleAnchor")) - 1)) & ~bytes32(uint256(0xff));
+        uint256 base = uint256(vm.load(address(hub), hubSlot));
+        assertEq(address(uint160(base)), hub.admin(), "admin lives at the namespace base");
+        uint256 word1 = uint256(vm.load(address(hub), bytes32(uint256(hubSlot) + 1)));
+        assertEq(address(uint160(word1)), hub.router(), "router at base+1");
+        assertEq(uint64(word1 >> 160), hub.ethChainSelector(), "ethChainSelector packs with router in base+1");
+        assertEq(
+            address(uint160(uint256(vm.load(address(hub), bytes32(uint256(hubSlot) + 2))))),
+            hub.gateway(),
+            "gateway at base+2"
+        );
+        assertEq(
+            address(uint160(uint256(vm.load(address(hub), bytes32(uint256(hubSlot) + 2))))),
+            hub.gateway(),
+            "gateway at base+2"
+        );
+
+        SubmissionGateway gw = new SubmissionGateway(address(0xB0B), address(hub), 777);
+        vm.prank(address(0xB0B));
+        gw.receiveRoot(0, bytes32(uint256(0xDEAD))); // makes nextBatch non-zero, so the read is not vacuous
+        bytes32 gwSlot = keccak256(abi.encode(uint256(keccak256("eulerphi.storage.SubmissionGateway")) - 1))
+            & ~bytes32(uint256(0xff));
+        assertEq(uint256(vm.load(address(gw), gwSlot)), gw.nextBatch(), "nextBatch at the gateway namespace base");
     }
 
     /// @dev Canonical deploy shape (mirrors script/DeployHub.s.sol): an OZ

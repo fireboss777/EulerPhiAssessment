@@ -26,6 +26,23 @@ import {Client} from "./Client.sol";
 /// source while the wire format stays pinned on both ends. The gateway also
 /// satisfies Chainlink's `IAny2EVMMessageReceiver` for the standard entry.
 interface ISubmissionGateway {
+    /// @notice The gateway's entire persistent state, in a single ERC-7201
+    /// namespace — same rule as the hub: the implementation declares no state
+    /// variable, everything lives here at
+    /// `keccak256(abi.encode(uint256(keccak256("eulerphi.storage.SubmissionGateway")) - 1)) & ~bytes32(uint256(0xff))`
+    /// (frozen literal in `SubmissionGateway`, proven by
+    /// `test_storageLivesAtErc7201Slot`). Only this cursor and the root record
+    /// are state: `router`, `hub` and `baseChainSelector` are `immutable`
+    /// (bytecode) and `SUBMIT_GAS_LIMIT` is `constant`.
+    ///
+    /// @custom:storage-location erc7201:eulerphi.storage.SubmissionGateway
+    struct Storage {
+        /// @dev Slot 0.
+        uint256 nextBatch;
+        /// @dev Slot 1 — mapping base; value at `keccak256(abi.encode(uint256(batchIndex), baseSlot))`.
+        mapping(uint256 => bytes32) notarizedRoot;
+    }
+
     // ---------------------------------------------------------------------
     // Events
     // ---------------------------------------------------------------------

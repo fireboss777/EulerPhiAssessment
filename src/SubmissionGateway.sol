@@ -23,10 +23,17 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
     /// @inheritdoc ISubmissionGateway
     uint64 public immutable baseChainSelector;
 
-    /// @inheritdoc ISubmissionGateway
-    uint256 public nextBatch;
-    /// @inheritdoc ISubmissionGateway
-    mapping(uint256 => bytes32) public notarizedRoot;
+    // ------------------------------------------------------------------
+    // ERC-7201 namespaced storage — the whole layout lives in
+    // `ISubmissionGateway.Storage` (this contract declares NO state variable)
+    // ------------------------------------------------------------------
+
+    /// @dev ERC-7201 formula — `keccak256(abi.encode(uint256(keccak256(
+    /// "eulerphi.storage.SubmissionGateway")) - 1)) & ~bytes32(uint256(0xff))`.
+    /// Frozen as a literal (assembly takes number constants only; no
+    /// `erc7201` builtin before solc 0.8.37) and pinned to the id by
+    /// `test_storageLivesAtErc7201Slot`.
+    bytes32 private constant _STORAGE_SLOT = 0x778a257330d5654b80658ea659939fc3425c0d3adecc97aad5fc044843fd4100;
 
     constructor(address router_, address hub_, uint64 baseChainSelector_) {
         router = router_;
@@ -87,12 +94,23 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
     }
 
     /// @inheritdoc ISubmissionGateway
+    function nextBatch() external view returns (uint256) {
+        return _getStorage().nextBatch;
+    }
+
+    /// @inheritdoc ISubmissionGateway
+    function notarizedRoot(uint256 batchIndex) external view returns (bytes32) {
+        return _getStorage().notarizedRoot[batchIndex];
+    }
+
+    /// @inheritdoc ISubmissionGateway
     function receiveRoot(uint256 batchIndex, bytes32 root) public {
         require(msg.sender == address(router), NotRouter());
-        require(batchIndex == nextBatch, OutOfOrder());
+        Storage storage $ = _getStorage();
+        require(batchIndex == $.nextBatch, OutOfOrder());
 
-        notarizedRoot[batchIndex] = root;
-        nextBatch = batchIndex + 1;
+        $.notarizedRoot[batchIndex] = root;
+        $.nextBatch = batchIndex + 1;
         emit RootNotarized(batchIndex, root);
     }
 
@@ -106,5 +124,13 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         require(bytes4(data[0:4]) == ISubmissionGateway.receiveRoot.selector, BadSelector());
         (uint256 batchIndex, bytes32 root) = abi.decode(data[4:], (uint256, bytes32));
         receiveRoot(batchIndex, root);
+    }
+
+    /// @dev The namespace pointer — `private` so a future derived contract
+    /// declares its own namespace instead of extending this one.
+    function _getStorage() private pure returns (Storage storage $) {
+        assembly {
+            $.slot := _STORAGE_SLOT
+        }
     }
 }

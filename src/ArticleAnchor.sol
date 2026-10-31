@@ -39,41 +39,22 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     uint256 private constant _HIGH_S_MAX = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
 
     // ---------------------------------------------------------------------
-    // Configuration (storage, never immutables: proxy-safe)
+    // ERC-7201 namespaced storage — the whole layout lives in
+    // `IArticleAnchor.Storage` (this contract declares NO state variable)
     // ---------------------------------------------------------------------
 
-    /// @inheritdoc IArticleAnchor
-    address public admin;
-    /// @inheritdoc IArticleAnchor
-    address public router;
-    /// @inheritdoc IArticleAnchor
-    uint64 public ethChainSelector;
-    /// @inheritdoc IArticleAnchor
-    address public gateway;
-
-    // ---------------------------------------------------------------------
-    // Journal & batch state
-    // ---------------------------------------------------------------------
-
-    /// @inheritdoc IArticleAnchor
-    bytes32[] public journal;
-    /// @inheritdoc IArticleAnchor
-    mapping(address => mapping(bytes32 => bool)) public usedUuid;
-    /// @inheritdoc IArticleAnchor
-    mapping(address => uint256) public lastSubmit;
-    /// @inheritdoc IArticleAnchor
-    uint256 public batchOpenedAt;
-    /// @inheritdoc IArticleAnchor
-    uint256 public lastAnchoredIndex;
-    /// @inheritdoc IArticleAnchor
-    mapping(uint256 => bytes32) public rootAt;
-    /// @inheritdoc IArticleAnchor
-    mapping(uint256 => uint256) public anchoredAtBlock;
-    /// @inheritdoc IArticleAnchor
-    uint256 public anchoredBatches;
+    /// @dev ERC-7201 formula — `keccak256(abi.encode(uint256(keccak256(
+    /// "eulerphi.storage.ArticleAnchor")) - 1)) & ~bytes32(uint256(0xff))`.
+    /// Frozen as a literal because inline assembly accepts only direct number
+    /// constants (`$.slot := _STORAGE_SLOT`) and solc 0.8.33 has no
+    /// `erc7201` builtin (0.8.37+). `test_storageLivesAtErc7201Slot`
+    /// recomputes the formula from the id and reads it back, so the literal
+    /// can never drift from the namespace it claims to be.
+    bytes32 private constant _STORAGE_SLOT = 0x15dbd2ada1700fe5c9739ea67ae301bf73151c332fba02dda344d3dd844a0300;
 
     modifier onlyAdmin() {
-        require(msg.sender == admin, AdminOnly());
+        Storage storage $ = _getStorage();
+        require(msg.sender == $.admin, AdminOnly());
         _;
     }
 
@@ -94,14 +75,15 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     /// @inheritdoc IArticleAnchor
     function initialize(address admin_, address router_, uint64 chainSelector_) external initializer {
         require(admin_ != address(0), ZeroAdmin());
-        admin = admin_;
-        router = router_;
-        ethChainSelector = chainSelector_;
+        Storage storage $ = _getStorage();
+        $.admin = admin_;
+        $.router = router_;
+        $.ethChainSelector = chainSelector_;
     }
 
     /// @inheritdoc IArticleAnchor
     function setGateway(address gateway_) external onlyAdmin {
-        gateway = gateway_;
+        _getStorage().gateway = gateway_;
     }
 
     // ---------------------------------------------------------------------
@@ -124,19 +106,20 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
 
     /// @inheritdoc IArticleAnchor
     function notarize(uint256 batchIndex) external payable {
-        uint256 anchoredAt = anchoredAtBlock[batchIndex];
+        Storage storage $ = _getStorage();
+        uint256 anchoredAt = $.anchoredAtBlock[batchIndex];
         require(anchoredAt != 0, NoBatch());
         require(block.number >= anchoredAt + NOTARY_K, NotFinal());
 
         Client.EVM2AnyMessage memory m = Client.EVM2AnyMessage({
-            receiver: abi.encode(gateway),
-            data: abi.encodeCall(ISubmissionGateway.receiveRoot, (batchIndex, rootAt[batchIndex])),
+            receiver: abi.encode($.gateway),
+            data: abi.encodeCall(ISubmissionGateway.receiveRoot, (batchIndex, $.rootAt[batchIndex])),
             tokenAmounts: new Client.EVMTokenAmount[](0),
             feeToken: address(0),
             extraArgs: Client._argsToBytesV1(NOTARY_GAS_LIMIT)
         });
-        bytes32 messageId = IRouterClient(router).ccipSend{value: msg.value}(ethChainSelector, m);
-        emit Notarized(batchIndex, rootAt[batchIndex], messageId);
+        bytes32 messageId = IRouterClient($.router).ccipSend{value: msg.value}($.ethChainSelector, m);
+        emit Notarized(batchIndex, $.rootAt[batchIndex], messageId);
     }
 
     // ---------------------------------------------------------------------
@@ -145,21 +128,23 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
 
     /// @inheritdoc IArticleAnchor
     function anchorNextBatch() external returns (bytes32 root) {
-        uint256 start = lastAnchoredIndex;
-        uint256 pending = journal.length - start;
+        Storage storage $ = _getStorage();
+        uint256 start = $.lastAnchoredIndex;
+        uint256 pending = $.journal.length - start;
         require(
-            pending > 0 && (pending >= MIN_BATCH || block.timestamp >= batchOpenedAt + BATCH_DEADLINE), BatchNotReady()
+            pending > 0 && (pending >= MIN_BATCH || block.timestamp >= $.batchOpenedAt + BATCH_DEADLINE),
+            BatchNotReady()
         );
 
         uint256 count = pending > MAX_BATCH ? MAX_BATCH : pending;
         uint256 end = start + count;
         root = _buildRoot(start, end);
 
-        uint256 batchIndex = anchoredBatches;
-        rootAt[batchIndex] = root;
-        anchoredAtBlock[batchIndex] = block.number;
-        anchoredBatches = batchIndex + 1;
-        lastAnchoredIndex = end;
+        uint256 batchIndex = $.anchoredBatches;
+        $.rootAt[batchIndex] = root;
+        $.anchoredAtBlock[batchIndex] = block.number;
+        $.anchoredBatches = batchIndex + 1;
+        $.lastAnchoredIndex = end;
 
         emit RootAnchored(batchIndex, root, start, end);
     }
@@ -169,22 +154,83 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     // ---------------------------------------------------------------------
 
     /// @inheritdoc IArticleAnchor
+    function admin() external view returns (address) {
+        return _getStorage().admin;
+    }
+
+    /// @inheritdoc IArticleAnchor
+    function router() external view returns (address) {
+        return _getStorage().router;
+    }
+
+    /// @inheritdoc IArticleAnchor
+    function ethChainSelector() external view returns (uint64) {
+        return _getStorage().ethChainSelector;
+    }
+
+    /// @inheritdoc IArticleAnchor
+    function gateway() external view returns (address) {
+        return _getStorage().gateway;
+    }
+
+    /// @inheritdoc IArticleAnchor
+    function journal(uint256 i) external view returns (bytes32) {
+        return _getStorage().journal[i];
+    }
+
+    /// @inheritdoc IArticleAnchor
+    function usedUuid(address author, bytes32 uuid) external view returns (bool) {
+        return _getStorage().usedUuid[author][uuid];
+    }
+
+    /// @inheritdoc IArticleAnchor
+    function lastSubmit(address author) external view returns (uint256) {
+        return _getStorage().lastSubmit[author];
+    }
+
+    /// @inheritdoc IArticleAnchor
+    function batchOpenedAt() external view returns (uint256) {
+        return _getStorage().batchOpenedAt;
+    }
+
+    /// @inheritdoc IArticleAnchor
+    function lastAnchoredIndex() external view returns (uint256) {
+        return _getStorage().lastAnchoredIndex;
+    }
+
+    /// @inheritdoc IArticleAnchor
+    function rootAt(uint256 batchIndex) external view returns (bytes32) {
+        return _getStorage().rootAt[batchIndex];
+    }
+
+    /// @inheritdoc IArticleAnchor
+    function anchoredAtBlock(uint256 batchIndex) external view returns (uint256) {
+        return _getStorage().anchoredAtBlock[batchIndex];
+    }
+
+    /// @inheritdoc IArticleAnchor
+    function anchoredBatches() external view returns (uint256) {
+        return _getStorage().anchoredBatches;
+    }
+
+    /// @inheritdoc IArticleAnchor
     function verifyAgainstBatch(uint256 batchIndex, bytes32 leaf, bytes32[] calldata proof)
         external
         view
         returns (bool)
     {
-        return MerkleProofLib.verifyCalldata(proof, rootAt[batchIndex], leaf);
+        return MerkleProofLib.verifyCalldata(proof, _getStorage().rootAt[batchIndex], leaf);
     }
 
     /// @inheritdoc IArticleAnchor
     function journalLength() external view returns (uint256) {
-        return journal.length;
+        return _getStorage().journal.length;
     }
 
     /// @inheritdoc IArticleAnchor
     function pendingLeaves() external view returns (uint256) {
-        return journal.length - lastAnchoredIndex;
+        Storage storage $ = _getStorage();
+        return $.journal.length - $.lastAnchoredIndex;
     }
 
     // ---------------------------------------------------------------------
@@ -193,9 +239,10 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
 
     /// @inheritdoc IArticleAnchor
     function consumeSubmittedArticle(Client.Any2EVMMessage calldata message) public {
-        require(msg.sender == address(router), NotRouter());
-        require(message.sourceChainSelector == ethChainSelector, BadChain());
-        require(abi.decode(message.sender, (address)) == gateway, BadSender());
+        Storage storage $ = _getStorage();
+        require(msg.sender == address($.router), NotRouter());
+        require(message.sourceChainSelector == $.ethChainSelector, BadChain());
+        require(abi.decode(message.sender, (address)) == $.gateway, BadSender());
         (bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload) =
             abi.decode(message.data, (bytes32, bytes, ArticleSubmission));
         _submit(leafDigest, sig, payload);
@@ -206,6 +253,7 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     // ---------------------------------------------------------------------
 
     function _submit(bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload) internal {
+        Storage storage $ = _getStorage();
         require(block.timestamp <= payload.deadline, Expired());
         require(keccak256(abi.encode(payload)) == leafDigest, DigestMismatch());
         // Canonical 65-byte (r, s, v) only; low-s enforced (Solady's recover
@@ -218,14 +266,14 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
         require(uint256(s) <= _HIGH_S_MAX, NonCanonicalSignature());
         bytes32 digest = _hashTypedData(ArticleLib.hashStruct(payload));
         require(ECDSA.recover(digest, sig) == payload.author, NotAuthor());
-        require(block.timestamp >= lastSubmit[payload.author] + RATE_LIMIT, RateLimited());
-        require(!usedUuid[payload.author][payload.uuid], DuplicateUuid());
+        require(block.timestamp >= $.lastSubmit[payload.author] + RATE_LIMIT, RateLimited());
+        require(!$.usedUuid[payload.author][payload.uuid], DuplicateUuid());
 
-        usedUuid[payload.author][payload.uuid] = true;
-        lastSubmit[payload.author] = block.timestamp;
+        $.usedUuid[payload.author][payload.uuid] = true;
+        $.lastSubmit[payload.author] = block.timestamp;
         // First leaf of a fresh batch window opens (and re-opens) the deadline.
-        if (journal.length == lastAnchoredIndex) batchOpenedAt = block.timestamp;
-        journal.push(leafDigest);
+        if ($.journal.length == $.lastAnchoredIndex) $.batchOpenedAt = block.timestamp;
+        $.journal.push(leafDigest);
 
         emit Submitted(payload.author, msg.sender, leafDigest);
     }
@@ -240,15 +288,25 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     /// children 2i+1/2i+2, so a leftover leaf pairs with an internal node).
     /// Kept in memory; any off-chain prover must use the same convention.
     function _buildRoot(uint256 start, uint256 end) internal view returns (bytes32) {
+        Storage storage $ = _getStorage();
         uint256 n = end - start;
         bytes32[] memory leaves = new bytes32[](n);
         for (uint256 i; i < n; ++i) {
-            leaves[i] = journal[start + i];
+            leaves[i] = $.journal[start + i];
         }
         return MerkleTreeLib.root(MerkleTreeLib.build(leaves));
     }
 
     function _domainNameAndVersion() internal pure override returns (string memory, string memory) {
         return ("EulerPhiArticle", "1");
+    }
+
+    /// @dev The namespace pointer: every state access in this contract goes
+    /// through it. `private` on purpose — a derived implementation must declare
+    /// its OWN ERC-7201 namespace instead of silently extending this one.
+    function _getStorage() private pure returns (Storage storage $) {
+        assembly {
+            $.slot := _STORAGE_SLOT
+        }
     }
 }
