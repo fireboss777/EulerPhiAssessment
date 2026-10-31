@@ -4,7 +4,7 @@ pragma solidity ^0.8.27;
 import { IArticleAnchor } from "../interfaces/IArticleAnchor.sol";
 
 /// @notice The hub's shared vocabulary, in one place: the EIP-712 envelope and
-/// its typehash, the batch/submission/notary policy constants, and the
+/// its typehash, the batch/submission policy constants, and the
 /// ERC-7201 namespace (slot constant + pointer). Every constant here is
 /// `public`, so it is readable from this library's own ABI as well as inlined
 /// at each use site — no contract exposes a getter for any of them.

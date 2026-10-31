@@ -124,9 +124,9 @@ contract UpgradeTest is ArticleTestBase {
     }
 
     /// @dev ERC-7201 proof: recompute each namespace slot FROM ITS ID and read
-    /// it raw. This pins three things at once — `ArticleLib.STORAGE_SLOT` and
-    /// `GatewayLib.STORAGE_SLOT` really are the ERC-7201 formula (id-derived,
-    /// constant and raw slots are independent computations that must agree),
+    /// it raw. This pins two things at once — `ArticleLib.STORAGE_SLOT`
+    /// really is the ERC-7201 formula (id-derived, constant and raw slots are
+    /// independent computations that must agree),
     /// and the struct really lives there, packing included: `router` (20B) + `ethChainSelector` (8B)
     /// share word 1 of the hub namespace, exactly as the pre-migration
     /// contract layout packed them.

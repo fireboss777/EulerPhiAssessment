@@ -556,9 +556,9 @@ code, and big decimals read `1_700_000_000`.
 
 | Rule | Where you see it |
 |---|---|
-| **Order of functions** — `constructor` → `receive` → `fallback` → `external` → `public` → `internal` → `private`, with `view`/`pure` last inside each group | `ArticleAnchor`: `initialize` … `anchorNextBatch`, then the external `view`s, then the `public` lane handler, then `_submit` … `_domainNameAndVersion` |
+| **Order of functions** — `constructor` → `receive` → `fallback` → `external` → `public` → `internal` → `private`, with `view`/`pure` last inside each group | `ArticleAnchor`: `initialize` … `anchorNextBatch`, then the external `view` `verifyAgainstBatch`, then `_consumeSubmittedArticle` … `_checkAdmin` |
 | **Order of layout** — type declarations → state variables → events → errors → modifiers → functions | interfaces open with their events, then the typed errors, then the ABI; contracts open with state, then `modifier onlyAdmin`, then functions |
-| **Modifier order** — visibility → mutability → `virtual` → `override` → custom | `ccipReceive(...) external override(ISubmissionGateway, IAny2EVMMessageReceiver)` |
+| **Modifier order** — visibility → mutability → `virtual` → `override` → custom | `_authorizeUpgrade(address) internal view override onlyAdmin` |
 | **≤ 120 characters per line** | enforced by `forge fmt` (see exception 3) |
 
 Naming follows the guide: `CapWords` for contracts, structs and events,
@@ -611,7 +611,7 @@ be inconsistent"*.
 - **CCIP fees, receiver gas limits and chain selectors must be re-verified**
   against live Chainlink documentation at deployment time.
 - **Rate limit / batch constants are policy, not security**: `MIN_BATCH=10`,
-  `MAX_BATCH=200`, `BATCH_DEADLINE=6h`, `RATE_LIMIT=1h`, `K=64` are chosen for
+  `MAX_BATCH=200`, `BATCH_DEADLINE=6h`, `RATE_LIMIT=1h` are chosen for
   a quiet chain and are trivially re-tuned before launch.
 
 ## License

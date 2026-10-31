@@ -16,7 +16,7 @@ import { MerkleTreeLib } from "solady/utils/MerkleTreeLib.sol";
 /// @notice Every external entry point, getter, constant and event is declared
 /// and documented on `IArticleAnchor`, which this contract inherits — read the
 /// interface for the API. Its ERC-7201 namespace (slot + pointer) and its whole
-/// batch/notary/signature policy live in `ArticleLib` as `public constant`s, so
+/// batch/signature policy live in `ArticleLib` as `public constant`s, so
 /// this contract declares NO state variable and NO constant. Only
 /// implementation-side members (constructor, modifiers, `internal` helpers)
 /// are documented here.
