@@ -364,6 +364,13 @@ and therefore control the journal. Mitigations in place, all tested:
   `test_initializeTwiceReverts`). The body still rejects `admin_ = address(0)`
   (`test_initializeRejectsZeroAdmin`). **Storage survives upgrades**
   (`test_journalPreservedAcrossUpgrade`).
+  No base `__X_init()` is called, and none exists to call: `UUPSUpgradeable`
+  is flagged `@custom:stateless` (no storage, no init function — it does not
+  even extend `Initializable`, which is why the hub inherits it explicitly),
+  Solady's `EIP712` caches its domain separator in `immutable`s and invalidates
+  the cache whenever `address()` differs, so the separator is rebuilt over the
+  proxy address, and `Initializable`'s own state is an ERC-7201 slot. Those
+  three configuration words are the entire bootstrap.
 - **`admin` is written exactly once** — by `initialize`, on the proxy (the
   constructor writes no configuration) — and has **no transfer function**. It cannot be rotated after deployment. That is
   a deliberate trade: no transfer means no transfer-hijack, and the price is
