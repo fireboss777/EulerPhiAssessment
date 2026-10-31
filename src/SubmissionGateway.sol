@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import { ArticleSubmission } from "./ArticleLib.sol";
+import { SubmissionGatewayGetters } from "./SubmissionGatewayGetters.sol";
 import { Client } from "./interfaces/Client.sol";
 import { IAny2EVMMessageReceiver } from "./interfaces/IAny2EVMMessageReceiver.sol";
 import { IRouterClient } from "./interfaces/IRouterClient.sol";
@@ -12,7 +13,7 @@ import { ISubmissionGateway } from "./interfaces/ISubmissionGateway.sol";
 /// and documented on `ISubmissionGateway`, which this contract inherits — read
 /// the interface for the API (including the paid-lane / no-ecrecover design
 /// notes). Only implementation-side members are documented here.
-contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
+contract SubmissionGateway is ISubmissionGateway, SubmissionGatewayGetters, IAny2EVMMessageReceiver {
     /// @inheritdoc ISubmissionGateway
     uint256 public constant SUBMIT_GAS_LIMIT = 400_000;
 
@@ -94,16 +95,6 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
     }
 
     /// @inheritdoc ISubmissionGateway
-    function nextBatch() external view returns (uint256) {
-        return _getStorage().nextBatch;
-    }
-
-    /// @inheritdoc ISubmissionGateway
-    function notarizedRoot(uint256 batchIndex) external view returns (bytes32) {
-        return _getStorage().notarizedRoot[batchIndex];
-    }
-
-    /// @inheritdoc ISubmissionGateway
     function receiveRoot(uint256 batchIndex, bytes32 root) public {
         require(msg.sender == address(ROUTER), NotRouter());
         Storage storage $ = _getStorage();
@@ -126,9 +117,11 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         receiveRoot(batchIndex, root);
     }
 
-    /// @dev The namespace pointer — `private` so a future derived contract
-    /// declares its own namespace instead of extending this one.
-    function _getStorage() private pure returns (Storage storage $) {
+    /// @dev The namespace pointer: `SubmissionGatewayGetters` declares it
+    /// `virtual` and unimplemented, so the literal stays here with the owner of
+    /// the namespace. `internal` is the least visibility that can `override`;
+    /// a derived contract wanting another layout must declare its own namespace.
+    function _getStorage() internal pure override returns (Storage storage $) {
         assembly {
             $.slot := _STORAGE_SLOT
         }

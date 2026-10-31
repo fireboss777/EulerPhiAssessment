@@ -3,7 +3,6 @@ pragma solidity ^0.8.27;
 
 import { ArticleSubmission } from "../ArticleLib.sol";
 import { Client } from "./Client.sol";
-import { IHubGetters } from "./IHubGetters.sol";
 
 /// @title ArticleAnchor — the canonical journal & batch root registry (hub).
 /// @notice Public ABI of the hub, implemented by `src/ArticleAnchor.sol`
@@ -27,9 +26,10 @@ import { IHubGetters } from "./IHubGetters.sol";
 /// `UUPSUpgradeable`); and the `Upgraded` event — emitted by OZ's inlined
 /// `ERC1967Utils`, so it IS part of this contract's ABI without being
 /// declared by us. Everything else — 14 functions and 3 events — is declared
-/// below; the 14 read getters are inherited from `IHubGetters`, which this
-/// interface also inherits, so the hub still reaches its complete ABI here.
-interface IArticleAnchor is IHubGetters {
+/// below. The 14 read getters are deliberately NOT here: they live in
+/// `IArticleAnchorGetters`, brought in by `ArticleAnchorGetters`, which this
+/// contract also inherits — the union of the two IS its complete ABI.
+interface IArticleAnchor {
     /// @notice The hub's entire persistent state, in a single ERC-7201
     /// namespace. The implementation declares NO state variable of its own:
     /// every read and write goes through this struct at the fixed slot

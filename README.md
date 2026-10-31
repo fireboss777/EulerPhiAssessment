@@ -23,7 +23,7 @@ end-to-end test all run through `forge`/`cast`. There is no JS/TS/npm anywhere
 git clone <this-repo> && cd <this-repo>
 forge soldeer install        # forge-std 1.17.0 + solady 0.1.26, from soldeer.lock
 forge build
-forge test                   # 64 tests, 10 suites
+forge test                   # 58 tests, 8 suites
 forge snapshot               # regenerates .gas-snapshot
 bash script/e2e-anvil.sh     # live end-to-end on anvil: submit → anchor → notarize
 ```
@@ -170,7 +170,7 @@ production-shaped numbers, not direct-call ones.
 | `notarize` — our side (K-gated) | keeper | **38,680** | + CCIP fee + the router's own execution |
 | gateway `submitArticle` — our side | writer | **37,170** | + L1 gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 13,533 B runtime, `SubmissionGateway` 5,705 B, `HubStorageReader` 5,681 B, `GatewayStorageReader` 1,280 B
+Contract sizes: `ArticleAnchor` 13,533 B runtime, `SubmissionGateway` 5,705 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
@@ -190,7 +190,7 @@ affordable where per-article onchain storage would not be.
 
 ## Attack matrix ↔ tests
 
-64 tests in 10 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
+58 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
 
 | # | Threat | Defense | Test(s) |
 |---|---|---|---|
@@ -319,18 +319,18 @@ what `notarize` reads together — the first migration attempt split them and
 paid +2,100 gas per notarization until the storage layout caught it). This is
 breaking for a proxy deployed at the old linear slots; no such deployment
 exists, and there is deliberately no dual-read migration.
-The namespace state is readable on chain only THROUGH a contract that owns it:
-the EVM has no opcode for reading another account's storage, so each namespace
-gets its OWN reader — `HubStorageReader` on the hub's chain and
-`GatewayStorageReader` on the gateway's chain, each bound at deployment and
-acting as a typed `staticcall` facade over its target's getters, plus a
-scalar-only `Snapshot` (a struct holding mappings cannot be returned at all,
-solc 4103). The two are deliberately separate contracts: the hub and the
-gateway never share a chain, and a contract can only call addresses that exist
-where it runs — one reader spanning both would silently have half of its API
-point at nothing. Reading raw slots from
-outside is an off-chain capability (`cast`, `eth_getStorageAt`, `vm.load`), and
-the project's own tooling uses it: `test_storageLivesAtErc7201Slot` and
+The namespace state is readable on chain only THROUGH the contract that owns
+it: the EVM has no opcode for reading another account's storage, so every getter
+is an `sload` inside the owner, living in a getter contract the owner inherits —
+`ArticleAnchorGetters` inside `ArticleAnchor`, `SubmissionGatewayGetters`
+inside `SubmissionGateway`, each behind its own interface
+(`IArticleAnchorGetters`, `ISubmissionGatewayGetters`): declared once,
+implemented once, inherited by exactly one contract. There is deliberately NO
+wrapper contract around them — a facade could only `staticcall` the owner back,
+adding a second copy of every function (plus a second chain to deploy on) to
+read the same words. Reading ANOTHER account's raw slots is an off-chain
+capability instead (`cast`, `eth_getStorageAt`, `vm.load`), and the project's
+own tooling uses it: `test_storageLivesAtErc7201Slot` and
 `test_proxyHasNoAdminSlot` both read foreign slots with `vm.load`.
 
 **Roles / allowlist publishing — deliberately not implemented.** The spec
@@ -518,38 +518,34 @@ src/
   ArticleAnchor.sol        hub: submit, journal, batching, roots, CCIP both ways, UUPS
   SubmissionGateway.sol    L1: payable entry lane (no ecrecover) + monotonic notary receiver
   ArticleLib.sol           EIP-712 struct + typehash
-  HubGetters.sol           the hub's 14 read getters, implemented once (abstract:
+  ArticleAnchorGetters.sol the hub's 14 read getters, implemented once (abstract:
                            it only supplies `_getStorage()`, never the literal)
-  HubStorageReader.sol     read-only facade over the HUB namespace (hub chain)
-  GatewayStorageReader.sol read-only facade over the GATEWAY namespace (gateway chain)
+  SubmissionGatewayGetters.sol
+                           the gateway's 2 read getters, same shape
   interfaces/
-    IArticleAnchor.sol     hub's full public ABI, laid out in style-guide order
+    IArticleAnchor.sol     hub's own public ABI, laid out in style-guide order
                            (events, then errors, then functions: actions first,
-                           `view` getters last) + all 15 custom errors + every
-                           API NatSpec; inherits `IHubGetters`, so the 14 read
-                           getters are declared there and never here —
-                           ArticleAnchor inherits it, so the compiler keeps docs
-                           and ABI in lockstep. Also owns the ERC-7201
+                           `view` last) + all 15 custom errors + every API
+                           NatSpec; the 14 read getters are NOT here — they
+                           live in `IArticleAnchorGetters` — and ArticleAnchor
+                           inherits both, so the compiler keeps docs and ABI in
+                           lockstep. Also owns the ERC-7201
                            `Storage` struct: the hub's ENTIRE state layout,
                            documented field by field. Every failure is a typed
                            error declared here, never a revert string: each
                            guard is written `require(condition, Err())`
-    IHubGetters.sol        the hub's 14 read getters — declared in ONE place and
-                           inherited by both consumers: `IArticleAnchor` (source)
-                           and `IHubStorageReader` (facade). Bodies differ by
-                           necessity: `HubGetters` does the `sload` (the account
-                           that owns the namespace), the facade does a typed
-                           `staticcall` (the EVM cannot read foreign storage)
+    IArticleAnchorGetters.sol
+                           the hub's 14 read getters — declared in ONE place,
+                           implemented in ONE contract (`ArticleAnchorGetters`),
+                           an `sload` in the account that owns the namespace.
+                           No wrapper copies them anywhere
     ISubmissionGateway.sol same for SubmissionGateway (10 typed errors + its
                            ERC-7201 `Storage` struct; it also fixes the 68-byte
                            `receiveRoot` wire format the hub encodes against)
-    IHubStorageReader.sol  hub facade API: bound target + `HubSnapshot` + why a
-                           `Storage` struct cannot be returned; the 14 field
-                           getters (9 scalars, 5 indexed) are inherited from
-                           `IHubGetters`, not redeclared
-    IGatewayStorageReader.sol
-                           gateway facade API: bound target + 2 getters +
-                           `GatewaySnapshot`
+    ISubmissionGatewayGetters.sol
+                           the gateway's 2 state reads (`nextBatch`,
+                           `notarizedRoot`) — declared once, implemented once in
+                           `SubmissionGatewayGetters`
     Client.sol, IRouterClient.sol, IAny2EVMMessageReceiver.sol
                            vendored CCIP subset @ commit 171f9f0
 script/
@@ -560,7 +556,6 @@ script/
 test/
   ArticleLib.t.sol Submit.t.sol Batch.t.sol MerkleDifferential.t.sol
   CCIP.t.sol Gateway.t.sol Upgrade.t.sol Gas.t.sol
-  HubStorageReader.t.sol GatewayStorageReader.t.sol
   lib/NaiveMerkle.sol   independent reference Merkle (differential)
   mocks/                MockRouter, ArticleAnchorV2Stub, AuthorGate
 .gas-snapshot            forge snapshot output (regenerate with `forge snapshot`)

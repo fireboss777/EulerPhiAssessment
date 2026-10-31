@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
+import { ArticleAnchorGetters } from "./ArticleAnchorGetters.sol";
 import { ArticleLib, ArticleSubmission } from "./ArticleLib.sol";
-import { HubGetters } from "./HubGetters.sol";
 import { Client } from "./interfaces/Client.sol";
 import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
 import { IRouterClient } from "./interfaces/IRouterClient.sol";
@@ -19,7 +19,7 @@ import { MerkleTreeLib } from "solady/utils/MerkleTreeLib.sol";
 /// and documented on `IArticleAnchor`, which this contract inherits — read the
 /// interface for the API. Only implementation-side members (constructor,
 /// modifiers, `internal` helpers) are documented here.
-contract ArticleAnchor is IArticleAnchor, HubGetters, Initializable, EIP712, UUPSUpgradeable {
+contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, EIP712, UUPSUpgradeable {
     // ---------------------------------------------------------------------
     // Constants (see plan: batch policy)
     // ---------------------------------------------------------------------
@@ -150,7 +150,7 @@ contract ArticleAnchor is IArticleAnchor, HubGetters, Initializable, EIP712, UUP
     }
 
     // ---------------------------------------------------------------------
-    // Views — verification (the 14 state getters live in `HubGetters`)
+    // Views — verification (the 14 state getters live in `ArticleAnchorGetters`)
     // ---------------------------------------------------------------------
 
     /// @inheritdoc IArticleAnchor
@@ -231,7 +231,7 @@ contract ArticleAnchor is IArticleAnchor, HubGetters, Initializable, EIP712, UUP
     }
 
     /// @dev The namespace pointer: every state access in this contract goes
-    /// through it. `HubGetters` declares it `virtual` and unimplemented, so the
+    /// through it. `ArticleAnchorGetters` declares it `virtual` and unimplemented, so the
     /// literal belongs here — to the namespace owner — and not to the read
     /// layer. `internal` is the least visibility that can `override`; a derived
     /// implementation that needs a different layout must declare its OWN

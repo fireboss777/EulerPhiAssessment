@@ -7,7 +7,9 @@ import { Client } from "./Client.sol";
 /// @title SubmissionGateway — the L1 endpoint (two roles, both pinned).
 /// @notice Public ABI of the gateway, implemented by
 /// `src/SubmissionGateway.sol` (which inherits this interface, so the compiler
-/// keeps ABI and docs in lockstep).
+/// keeps ABI and docs in lockstep). The two state reads live in
+/// `ISubmissionGatewayGetters`, brought in through `SubmissionGatewayGetters`
+/// — declared once, implemented once, never copied.
 ///
 /// 1. Paid entry lane: `submitArticle` mirrors the hub's API plus `payable` —
 /// the caller funds L1 execution + the CCIP fee for the L2 leg, and one
@@ -133,10 +135,4 @@ interface ISubmissionGateway {
 
     /// @notice Chainlink chain selector of the hub chain (not a chain id).
     function BASE_CHAIN_SELECTOR() external view returns (uint64);
-
-    /// @notice Next batch index acceptable — no skips, no reordering, no replays.
-    function nextBatch() external view returns (uint256);
-
-    /// @notice Notarized root of batch `batchIndex` as recorded on Ethereum.
-    function notarizedRoot(uint256 batchIndex) external view returns (bytes32);
 }

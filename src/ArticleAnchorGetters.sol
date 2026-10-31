@@ -2,9 +2,9 @@
 pragma solidity ^0.8.27;
 
 import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
-import { IHubGetters } from "./interfaces/IHubGetters.sol";
+import { IArticleAnchorGetters } from "./interfaces/IArticleAnchorGetters.sol";
 
-/// @title HubGetters — the hub's 14 read getters, implemented once, here.
+/// @title ArticleAnchorGetters — the hub's 14 read getters, implemented once, here.
 /// @notice `ArticleAnchor` inherits this contract instead of writing the
 /// getters itself, so the hub main contract keeps only protocol behaviour
 /// (lifecycle, submission, anchoring, notarizing) and its namespace pointer.
@@ -15,74 +15,74 @@ import { IHubGetters } from "./interfaces/IHubGetters.sol";
 /// `eulerphi.storage.ArticleAnchor`), not to this read layer, so a second
 /// namespace could reuse these getters by implementing its own pointer. This
 /// contract is therefore `abstract` and never deployed on its own.
-abstract contract HubGetters is IHubGetters {
-    /// @inheritdoc IHubGetters
+abstract contract ArticleAnchorGetters is IArticleAnchorGetters {
+    /// @inheritdoc IArticleAnchorGetters
     function admin() external view returns (address) {
         return _getStorage().admin;
     }
 
-    /// @inheritdoc IHubGetters
+    /// @inheritdoc IArticleAnchorGetters
     function router() external view returns (address) {
         return _getStorage().router;
     }
 
-    /// @inheritdoc IHubGetters
+    /// @inheritdoc IArticleAnchorGetters
     function ethChainSelector() external view returns (uint64) {
         return _getStorage().ethChainSelector;
     }
 
-    /// @inheritdoc IHubGetters
+    /// @inheritdoc IArticleAnchorGetters
     function gateway() external view returns (address) {
         return _getStorage().gateway;
     }
 
-    /// @inheritdoc IHubGetters
+    /// @inheritdoc IArticleAnchorGetters
     function journal(uint256 i) external view returns (bytes32) {
         return _getStorage().journal[i];
     }
 
-    /// @inheritdoc IHubGetters
+    /// @inheritdoc IArticleAnchorGetters
     function journalLength() external view returns (uint256) {
         return _getStorage().journal.length;
     }
 
-    /// @inheritdoc IHubGetters
+    /// @inheritdoc IArticleAnchorGetters
     function pendingLeaves() external view returns (uint256) {
         IArticleAnchor.Storage storage $ = _getStorage();
         return $.journal.length - $.lastAnchoredIndex;
     }
 
-    /// @inheritdoc IHubGetters
+    /// @inheritdoc IArticleAnchorGetters
     function usedUuid(address author, bytes32 uuid) external view returns (bool) {
         return _getStorage().usedUuid[author][uuid];
     }
 
-    /// @inheritdoc IHubGetters
+    /// @inheritdoc IArticleAnchorGetters
     function lastSubmit(address author) external view returns (uint256) {
         return _getStorage().lastSubmit[author];
     }
 
-    /// @inheritdoc IHubGetters
+    /// @inheritdoc IArticleAnchorGetters
     function batchOpenedAt() external view returns (uint256) {
         return _getStorage().batchOpenedAt;
     }
 
-    /// @inheritdoc IHubGetters
+    /// @inheritdoc IArticleAnchorGetters
     function lastAnchoredIndex() external view returns (uint256) {
         return _getStorage().lastAnchoredIndex;
     }
 
-    /// @inheritdoc IHubGetters
+    /// @inheritdoc IArticleAnchorGetters
     function rootAt(uint256 batchIndex) external view returns (bytes32) {
         return _getStorage().rootAt[batchIndex];
     }
 
-    /// @inheritdoc IHubGetters
+    /// @inheritdoc IArticleAnchorGetters
     function anchoredAtBlock(uint256 batchIndex) external view returns (uint256) {
         return _getStorage().anchoredAtBlock[batchIndex];
     }
 
-    /// @inheritdoc IHubGetters
+    /// @inheritdoc IArticleAnchorGetters
     function anchoredBatches() external view returns (uint256) {
         return _getStorage().anchoredBatches;
     }

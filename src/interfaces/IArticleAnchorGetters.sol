@@ -1,22 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-/// @title IHubGetters — the hub's read API, declared in exactly ONE place.
-/// @notice The 14 field getters over the hub's ERC-7201 namespace. Two
-/// contracts expose them and neither redeclares a single one:
-/// `IArticleAnchor is IHubGetters` (the hub's own interface still reaches its
-/// full ABI) and `IHubStorageReader is IHubGetters` (the per-chain facade), so
-/// `admin()` exists once as a declaration no matter where you read it from.
+/// @title IArticleAnchorGetters — the hub's read API, declared in exactly ONE place.
+/// @notice The 14 field getters over the hub's ERC-7201 namespace. Declared
+/// here, implemented once in `ArticleAnchorGetters`, which `ArticleAnchor`
+/// inherits — so `admin()` is a declaration in exactly ONE file and code in
+/// exactly ONE contract, with nothing anywhere else holding a copy.
 ///
-/// @dev Their bodies are necessarily different, and that is the whole point of
-/// splitting them: `HubGetters` reads the namespace directly (an `sload` in the
-/// account that owns it — the hub), while `HubStorageReader` `staticcall`s the
-/// hub it was bound to, because the EVM has no opcode for reading ANOTHER
-/// account's storage. The facade therefore cannot reuse the hub's bodies, but
-/// it reuses these declarations — which is what keeps the two in lockstep: each
-/// body is checked by the compiler against this file, so a signature change
-/// breaks the build on both sides at once.
-interface IHubGetters {
+/// @dev Direct reads: every body is an `sload` in the account that owns the
+/// namespace — the only account that CAN read it, since the EVM has no opcode
+/// for another account's storage. That is also why there is no separate reader
+/// contract: a facade could only `staticcall` this contract back, adding a
+/// second copy of every function for nothing. The declarations are what keep
+/// the implementations honest — each body is checked by the compiler against
+/// this file, so a signature change breaks the build.
+interface IArticleAnchorGetters {
     /// @notice The only key allowed to upgrade the implementation and to wire
     /// the gateway. Set once (constructor / `initialize`) and never transferable
     /// — deploy with a multisig or timelock from day one.

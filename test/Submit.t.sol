@@ -23,6 +23,11 @@ contract SubmitTest is ArticleTestBase {
 
         assertEq(hub.journalLength(), 1, "journal count");
         assertEq(hub.journal(0), leaf, "journal leaf");
+        // the two bookkeeping reads, exercised straight through the hub: their
+        // getters live in `ArticleAnchorGetters` and nothing else wraps them
+        assertTrue(hub.usedUuid(author, p.uuid), "uuid marked used");
+        assertEq(hub.lastSubmit(author), block.timestamp, "rate-limit stamp");
+        assertFalse(hub.usedUuid(author, bytes32(0)), "fresh uuid reads false");
     }
 
     function test_digestMismatchReverts() public {
