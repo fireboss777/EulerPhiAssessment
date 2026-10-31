@@ -71,7 +71,7 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
 
     /// @inheritdoc IArticleAnchor
     function ccipReceive(Client.Any2EVMMessage calldata message) external {
-        consumeSubmittedArticle(message);
+        _consumeSubmittedArticle(message);
     }
 
     /// @inheritdoc IArticleAnchor
@@ -134,11 +134,14 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
     }
 
     // ---------------------------------------------------------------------
-    // Public: inbound lane handler (ccipReceive forwards into it)
+    // Internal helpers (inbound lane, submission core, EIP-712 & UUPS wiring)
     // ---------------------------------------------------------------------
 
-    /// @inheritdoc IArticleAnchor
-    function consumeSubmittedArticle(Client.Any2EVMMessage calldata message) public {
+    /// @dev The pinned inbound lane — (router, sourceChainSelector, sender), then
+    /// decode and hand to `_submit`. Only reachable through `ccipReceive` (the
+    /// entry Chainlink's interface mandates), which forwards here without
+    /// checking anything itself, so these three pins ARE the lane's security.
+    function _consumeSubmittedArticle(Client.Any2EVMMessage calldata message) internal {
         Storage storage $ = ArticleLib.getStorage();
         require(msg.sender == address($.router), NotRouter());
         require(message.sourceChainSelector == $.ethChainSelector, BadChain());
@@ -147,10 +150,6 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
             abi.decode(message.data, (bytes32, bytes, ArticleSubmission));
         _submit(leafDigest, sig, payload);
     }
-
-    // ---------------------------------------------------------------------
-    // Internal helpers (submission core, EIP-712 & UUPS wiring)
-    // ---------------------------------------------------------------------
 
     function _submit(bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload) internal {
         Storage storage $ = ArticleLib.getStorage();

@@ -46,12 +46,10 @@ contract MockRouter {
     // Test-only delivery helpers (this contract IS the router to the hub).
     // ------------------------------------------------------------------
 
-    function deliver(address hub, Client.Any2EVMMessage calldata message) external {
-        IArticleAnchor(hub).consumeSubmittedArticle(message);
-    }
-
-    function deliverViaCcipReceive(address hub, Client.Any2EVMMessage calldata message) external {
-        IArticleAnchor(hub).ccipReceive(message);
+    /// @dev The single door into the hub/gateway: `ccipReceive` is the only
+    /// external entry (the handler behind it is `internal`).
+    function deliver(address target, Client.Any2EVMMessage calldata message) external {
+        IArticleAnchor(target).ccipReceive(message);
     }
 
     function getFee(uint64, Client.EVM2AnyMessage memory) external view returns (uint256) {

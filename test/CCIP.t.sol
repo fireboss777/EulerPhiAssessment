@@ -74,20 +74,21 @@ contract CCIPTest is ArticleTestBase {
         (bytes32 leaf, bytes memory sig, IArticleAnchor.ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 5);
 
         // The standard IAny2EVMMessageReceiver entry (what a real router calls).
-        mock.deliverViaCcipReceive(address(hub), _inbound(TEST_SEL, GATEWAY, leaf, sig, p));
+        mock.deliver(address(hub), _inbound(TEST_SEL, GATEWAY, leaf, sig, p));
 
-        assertEq(hub.journalLength(), 1, "ccipReceive forwards to consume");
+        assertEq(hub.journalLength(), 1, "ccipReceive lands the payload");
     }
 
     /// @dev The pin has three legs; `msg.sender == router` is the first and
     /// the only one a direct (non-CCIP) caller faces. Bypassing the router
-    /// must die here even with a perfectly valid chain/sender tuple.
+    /// must die here even with a perfectly valid chain/sender tuple — the CCIP
+    /// entry itself checks nothing, the lane handler behind it does.
     function test_directConsumeRejected() public {
         (bytes32 leaf, bytes memory sig, IArticleAnchor.ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 6);
         Client.Any2EVMMessage memory m = _inbound(TEST_SEL, GATEWAY, leaf, sig, p);
 
         vm.expectRevert(IArticleAnchor.NotRouter.selector);
-        hub.consumeSubmittedArticle(m);
+        hub.ccipReceive(m);
     }
 
     // ------------------------------------------------------------------

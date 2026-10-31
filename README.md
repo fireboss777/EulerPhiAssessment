@@ -51,7 +51,7 @@ Dependencies are **Soldeer-managed only** (no git submodules, no npm):
 │  submitArticle(leaf, sig, payload)        │   │  submitArticle(leaf, sig, payload)          │
 │    payable · digest check only            │   │    public · EIP-712 authorship check        │
 │         │                                 │   │         │                                   │
-│         └──────── CCIP ───────────────────┼──▶│  consumeSubmittedArticle  (pinned source)   │
+│         └──────── CCIP ───────────────────┼──▶│  ccipReceive  (pinned inbound lane)         │
 │                                           │   │         │                                   │
 │  receiveRoot(batchIndex, root)  ◀─────────┼───┼── notarize(i)  (payable, K = 64 blocks)     │
 │    router-gated · strictly monotonic      │   │         │                                   │
@@ -167,10 +167,10 @@ production-shaped numbers, not direct-call ones.
 | `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **126,710** | ≈98k fixed window/tree overhead |
 | `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **676,720** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
 | `verifyAgainstBatch` — 10-leaf root | reader | **15,086** | an `eth_call` costs you nothing |
-| `notarize` — our side (K-gated) | keeper | **38,741** | + CCIP fee + the router's own execution |
-| gateway `submitArticle` — our side | writer | **37,148** | + L1 gas + CCIP fee (router's execution on top) |
+| `notarize` — our side (K-gated) | keeper | **38,718** | + CCIP fee + the router's own execution |
+| gateway `submitArticle` — our side | writer | **37,125** | + L1 gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 13,156 B runtime, `SubmissionGateway` 5,652 B
+Contract sizes: `ArticleAnchor` 13,089 B runtime, `SubmissionGateway` 5,652 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
@@ -201,7 +201,7 @@ affordable where per-article onchain storage would not be.
 | 4b | **Squat a victim's predictable uuid** with your own payload to block their article | dedup is author-scoped, so a foreign author's uuid never collides | `Submit.t.sol::test_uuidSquatDoesNotBlockVictim`, `test_sameAuthorSameUuidStillDeduped` |
 | 5 | Reuse it across lanes (direct **and** gateway-CCIP) | same `uuid` check sees both lanes | `CCIP.t.sol::test_replayAcrossLanesReverts` |
 | 6 | Replay on another hub instance or another chain | EIP-712 domain `(chainId, verifyingContract)` | `Submit.t.sol::test_payloadSignedForAnotherDomainReverts` |
-| 7 | Bypass the router to inject into `consumeSubmittedArticle` | `msg.sender == router` | `CCIP.t.sol::test_directConsumeRejected` |
+| 7 | Bypass the router to inject through `ccipReceive` (the entry itself checks nothing) | `msg.sender == router`, checked in the lane handler | `CCIP.t.sol::test_directConsumeRejected` |
 | 8 | Message from a foreign chain | `sourceChainSelector` pin | `CCIP.t.sol::test_wrongChainSelectorReverts` |
 | 9 | Message from a foreign sender on the right chain | `sender == gateway` pin | `CCIP.t.sol::test_wrongSenderReverts` |
 | 10 | Notarize a root that could still reorg | `block.number ≥ anchoredAtBlock + K(64)` | `CCIP.t.sol::test_notarizeRevertsBeforeK`, `CCIP.t.sol::test_notarizeUnanchoredBatchReverts` |

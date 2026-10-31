@@ -85,26 +85,26 @@ contract GatewayTest is ArticleTestBase {
 
         // Batch 1 before batch 0 — rejected (no skipping, no reordering).
         vm.expectRevert(ISubmissionGateway.OutOfOrder.selector);
-        mock.deliverViaCcipReceive(address(gw), _rootMsg(BASE_SEL, HUB, 1, r1));
+        mock.deliver(address(gw), _rootMsg(BASE_SEL, HUB, 1, r1));
 
-        mock.deliverViaCcipReceive(address(gw), _rootMsg(BASE_SEL, HUB, 0, r0));
+        mock.deliver(address(gw), _rootMsg(BASE_SEL, HUB, 0, r0));
         assertEq(gw.notarizedRoot(0), r0, "batch 0 recorded");
         assertEq(gw.nextBatch(), 1, "cursor advanced");
 
         // Replay of batch 0 — rejected.
         vm.expectRevert(ISubmissionGateway.OutOfOrder.selector);
-        mock.deliverViaCcipReceive(address(gw), _rootMsg(BASE_SEL, HUB, 0, r0));
+        mock.deliver(address(gw), _rootMsg(BASE_SEL, HUB, 0, r0));
 
-        mock.deliverViaCcipReceive(address(gw), _rootMsg(BASE_SEL, HUB, 1, r1));
+        mock.deliver(address(gw), _rootMsg(BASE_SEL, HUB, 1, r1));
         assertEq(gw.notarizedRoot(1), r1, "batch 1 recorded");
     }
 
     function test_receiveRootWrongSourceReverts() public {
         vm.expectRevert(ISubmissionGateway.BadChain.selector);
-        mock.deliverViaCcipReceive(address(gw), _rootMsg(BASE_SEL + 1, HUB, 0, keccak256("r")));
+        mock.deliver(address(gw), _rootMsg(BASE_SEL + 1, HUB, 0, keccak256("r")));
 
         vm.expectRevert(ISubmissionGateway.BadSender.selector);
-        mock.deliverViaCcipReceive(address(gw), _rootMsg(BASE_SEL, FOREIGN, 0, keccak256("r")));
+        mock.deliver(address(gw), _rootMsg(BASE_SEL, FOREIGN, 0, keccak256("r")));
     }
 
     /// @dev `receiveRoot` is public (plan-named API) but router-gated inside:
@@ -172,7 +172,7 @@ contract GatewayTest is ArticleTestBase {
             data: mock.lastData(), // exactly the bytes the hub produced
             destTokenAmounts: new Client.EVMTokenAmount[](0)
         });
-        mock.deliverViaCcipReceive(address(gw2), delivered);
+        mock.deliver(address(gw2), delivered);
 
         assertEq(gw2.notarizedRoot(0), hub.rootAt(0), "root roundtrip through both contracts");
         assertEq(gw2.nextBatch(), 1, "cursor advanced");
@@ -184,12 +184,12 @@ contract GatewayTest is ArticleTestBase {
         Client.Any2EVMMessage memory noSelector = _rootMsg(BASE_SEL, HUB, 0, root);
         noSelector.data = abi.encode(0, root); // 64-byte tuple: no selector
         vm.expectRevert(ISubmissionGateway.BadPayloadLength.selector);
-        mock.deliverViaCcipReceive(address(gw), noSelector);
+        mock.deliver(address(gw), noSelector);
 
         Client.Any2EVMMessage memory wrongSelector = _rootMsg(BASE_SEL, HUB, 0, root);
         wrongSelector.data = abi.encodePacked(hex"deadbeef", abi.encode(0, root));
         vm.expectRevert(ISubmissionGateway.BadSelector.selector);
-        mock.deliverViaCcipReceive(address(gw), wrongSelector);
+        mock.deliver(address(gw), wrongSelector);
     }
 
     /// @dev Gateway lane never verifies signatures (decision 1a) — sig bytes
