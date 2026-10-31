@@ -2,7 +2,7 @@
 pragma solidity ^0.8.27;
 
 import { ArticleAnchor } from "../src/ArticleAnchor.sol";
-import { ArticleLib, ArticleSubmission } from "../src/ArticleLib.sol";
+import { ArticleLib, ArticleSubmission } from "../src/libraries/ArticleLib.sol";
 import { Script } from "forge-std/Script.sol";
 import { console } from "forge-std/console.sol";
 

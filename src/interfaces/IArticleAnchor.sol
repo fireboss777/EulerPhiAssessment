@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import { ArticleSubmission } from "../ArticleLib.sol";
+import { ArticleSubmission } from "../libraries/ArticleLib.sol";
 import { Client } from "./Client.sol";
 
 /// @title ArticleAnchor — the canonical journal & batch root registry (hub).

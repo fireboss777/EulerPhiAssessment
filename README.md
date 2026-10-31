@@ -162,19 +162,19 @@ production-shaped numbers, not direct-call ones.
 
 | Operation | Who pays | Gas (marginal) | Notes |
 |---|---|---:|---|
-| `submitArticle` — first leaf (cold slots) | relayer / writer | **129,332** | opens the batch window |
-| `submitArticle` — steady state | relayer / writer | **87,313** | 1h per-author rate limit applies |
-| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **126,654** | ≈98k fixed window/tree overhead |
-| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **676,664** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
-| `verifyAgainstBatch` — 10-leaf root | reader | **15,075** | an `eth_call` costs you nothing |
-| `notarize` — our side (K-gated) | keeper | **38,680** | + CCIP fee + the router's own execution |
+| `submitArticle` — first leaf (cold slots) | relayer / writer | **129,349** | opens the batch window |
+| `submitArticle` — steady state | relayer / writer | **87,330** | 1h per-author rate limit applies |
+| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **126,688** | ≈98k fixed window/tree overhead |
+| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **676,698** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
+| `verifyAgainstBatch` — 10-leaf root | reader | **15,109** | an `eth_call` costs you nothing |
+| `notarize` — our side (K-gated) | keeper | **38,697** | + CCIP fee + the router's own execution |
 | gateway `submitArticle` — our side | writer | **37,170** | + L1 gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 13,533 B runtime, `SubmissionGateway` 5,705 B
+Contract sizes: `ArticleAnchor` 13,540 B runtime, `SubmissionGateway` 5,712 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
-rollup's L1 data component. At 87,313 gas: 0.01 gwei ≈ 0.87 µETH, 0.1 gwei ≈
+rollup's L1 data component. At 87,330 gas: 0.01 gwei ≈ 0.87 µETH, 0.1 gwei ≈
 8.7 µETH — i.e. **fractions of a cent to a few cents per article** at an ETH
 price of $3k, before the (small, calldata-based) rollup data fee. Numbers are
 examples, not promises: prices move, and the two CCIP rows above are *our*
@@ -304,12 +304,14 @@ dedup and batch window live in mappings precisely because those are
 **ERC-7201 namespaced storage.** Neither contract declares a state variable:
 each one's whole layout is a `Storage` struct on its interface, addressed at
 `keccak256(abi.encode(uint256(keccak256("eulerphi.storage.ArticleAnchor")) - 1)) & ~bytes32(uint256(0xff))`
-and reached through a single `_getStorage()` pointer — declared `virtual` and
-unimplemented by the inherited `HubGetters` read layer, pinned here as an
-`override` (the literal is frozen in the contract because inline assembly takes
-only number constants, and
-`test_storageLivesAtErc7201Slot` recomputes the formula from the namespace id
-and reads it raw — literal, id and contents must all agree). Payoffs: a future
+and reached through a single `ArticleLib.getStorage()` pointer whose slot
+constant sits beside it (`ArticleLib.STORAGE_SLOT`, and `GatewayLib` holds the
+other namespace's pair): one pointer and one literal per namespace, living in a
+library instead of a `virtual`/`override` pair spread over two contracts
+(assembly takes only number constants, hence the local copy inside the
+pointer). `test_storageLivesAtErc7201Slot` recomputes the formula from the
+namespace id, compares it against those constants and reads the raw slots —
+constant, id and contents must all agree. Payoffs: a future
 base contract or a field reordering cannot collide with this layout, because a
 namespace owns its own region of the slot space; the layout is auditable as one
 commented block instead of being implied by declaration order across the file;
@@ -517,11 +519,13 @@ need to).
 src/
   ArticleAnchor.sol        hub: submit, journal, batching, roots, CCIP both ways, UUPS
   SubmissionGateway.sol    L1: payable entry lane (no ecrecover) + monotonic notary receiver
-  ArticleLib.sol           EIP-712 struct + typehash
-  ArticleAnchorGetters.sol the hub's 14 read getters, implemented once (abstract:
-                           it only supplies `_getStorage()`, never the literal)
+  ArticleAnchorGetters.sol the hub's 14 read getters, implemented once (abstract)
   SubmissionGatewayGetters.sol
                            the gateway's 2 read getters, same shape
+  libraries/
+    ArticleLib.sol         EIP-712 struct + typehash + the hub's ERC-7201 slot
+                           constant and namespace pointer (`getStorage()`)
+    GatewayLib.sol         the gateway's ERC-7201 slot constant + pointer
   interfaces/
     IArticleAnchor.sol     hub's own public ABI, laid out in style-guide order
                            (events, then errors, then functions: actions first,
@@ -597,9 +601,10 @@ guide leaves room:
   library namespace already says "non-external", and that is what Solady's and
   OpenZeppelin's libraries do;
 - **internal constants keep bare `UPPER_CASE`** (`ArticleLib.TYPEHASH`,
-  `ArticleTestBase.FORGER_KEY`) — prefixing them yields `_TYPEHASH`, which
-  reads as collision avoidance rather than visibility. Every `private`
-  constant does carry the underscore (`_HIGH_S_MAX`).
+  `ArticleLib.STORAGE_SLOT`, `ArticleTestBase.FORGER_KEY`) — prefixing them
+  yields `_TYPEHASH`, which reads as collision avoidance rather than
+  visibility. Every `private` constant does carry the underscore
+  (`_HIGH_S_MAX`).
 
 Three exceptions, each leaning on the guide's own preamble: *"In the event of
 conflicts, project specific style guides take precedence"* and *"know when to

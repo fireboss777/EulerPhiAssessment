@@ -1,18 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import { ArticleSubmission } from "./ArticleLib.sol";
 import { SubmissionGatewayGetters } from "./SubmissionGatewayGetters.sol";
 import { Client } from "./interfaces/Client.sol";
 import { IAny2EVMMessageReceiver } from "./interfaces/IAny2EVMMessageReceiver.sol";
 import { IRouterClient } from "./interfaces/IRouterClient.sol";
 import { ISubmissionGateway } from "./interfaces/ISubmissionGateway.sol";
+import { ArticleSubmission } from "./libraries/ArticleLib.sol";
+import { GatewayLib } from "./libraries/GatewayLib.sol";
 
 /// @title SubmissionGateway — the L1 endpoint (two roles, both pinned).
 /// @notice Every external entry point, getter, constant and event is declared
 /// and documented on `ISubmissionGateway`, which this contract inherits — read
 /// the interface for the API (including the paid-lane / no-ecrecover design
-/// notes). Only implementation-side members are documented here.
+/// notes). Its ERC-7201 namespace (slot constant + pointer) lives in
+/// `GatewayLib`, so this contract declares NO state variable. Only
+/// implementation-side members are documented here.
 contract SubmissionGateway is ISubmissionGateway, SubmissionGatewayGetters, IAny2EVMMessageReceiver {
     /// @inheritdoc ISubmissionGateway
     uint256 public constant SUBMIT_GAS_LIMIT = 400_000;
@@ -23,18 +26,6 @@ contract SubmissionGateway is ISubmissionGateway, SubmissionGatewayGetters, IAny
     address public immutable HUB;
     /// @inheritdoc ISubmissionGateway
     uint64 public immutable BASE_CHAIN_SELECTOR;
-
-    // ------------------------------------------------------------------
-    // ERC-7201 namespaced storage — the whole layout lives in
-    // `ISubmissionGateway.Storage` (this contract declares NO state variable)
-    // ------------------------------------------------------------------
-
-    /// @dev ERC-7201 formula — `keccak256(abi.encode(uint256(keccak256(
-    /// "eulerphi.storage.SubmissionGateway")) - 1)) & ~bytes32(uint256(0xff))`.
-    /// Frozen as a literal (assembly takes number constants only; no
-    /// `erc7201` builtin before solc 0.8.37) and pinned to the id by
-    /// `test_storageLivesAtErc7201Slot`.
-    bytes32 private constant _STORAGE_SLOT = 0x778a257330d5654b80658ea659939fc3425c0d3adecc97aad5fc044843fd4100;
 
     constructor(address router_, address hub_, uint64 baseChainSelector_) {
         ROUTER = router_;
@@ -97,7 +88,7 @@ contract SubmissionGateway is ISubmissionGateway, SubmissionGatewayGetters, IAny
     /// @inheritdoc ISubmissionGateway
     function receiveRoot(uint256 batchIndex, bytes32 root) public {
         require(msg.sender == address(ROUTER), NotRouter());
-        Storage storage $ = _getStorage();
+        Storage storage $ = GatewayLib.getStorage();
         require(batchIndex == $.nextBatch, OutOfOrder());
 
         $.notarizedRoot[batchIndex] = root;
@@ -115,15 +106,5 @@ contract SubmissionGateway is ISubmissionGateway, SubmissionGatewayGetters, IAny
         require(bytes4(data[0:4]) == ISubmissionGateway.receiveRoot.selector, BadSelector());
         (uint256 batchIndex, bytes32 root) = abi.decode(data[4:], (uint256, bytes32));
         receiveRoot(batchIndex, root);
-    }
-
-    /// @dev The namespace pointer: `SubmissionGatewayGetters` declares it
-    /// `virtual` and unimplemented, so the literal stays here with the owner of
-    /// the namespace. `internal` is the least visibility that can `override`;
-    /// a derived contract wanting another layout must declare its own namespace.
-    function _getStorage() internal pure override returns (Storage storage $) {
-        assembly {
-            $.slot := _STORAGE_SLOT
-        }
     }
 }

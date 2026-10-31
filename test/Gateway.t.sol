@@ -2,10 +2,10 @@
 pragma solidity ^0.8.27;
 
 import { ArticleAnchor } from "../src/ArticleAnchor.sol";
-import { ArticleSubmission } from "../src/ArticleLib.sol";
 import { SubmissionGateway } from "../src/SubmissionGateway.sol";
 import { Client } from "../src/interfaces/Client.sol";
 import { ISubmissionGateway } from "../src/interfaces/ISubmissionGateway.sol";
+import { ArticleSubmission } from "../src/libraries/ArticleLib.sol";
 import { MockRouter } from "./mocks/MockRouter.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 

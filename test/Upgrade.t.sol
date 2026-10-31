@@ -4,6 +4,8 @@ pragma solidity ^0.8.27;
 import { ArticleAnchor } from "../src/ArticleAnchor.sol";
 import { SubmissionGateway } from "../src/SubmissionGateway.sol";
 import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
+import { ArticleLib } from "../src/libraries/ArticleLib.sol";
+import { GatewayLib } from "../src/libraries/GatewayLib.sol";
 import { ArticleAnchorV2Stub } from "./mocks/ArticleAnchorV2Stub.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -124,10 +126,10 @@ contract UpgradeTest is ArticleTestBase {
     }
 
     /// @dev ERC-7201 proof: recompute each namespace slot FROM ITS ID and read
-    /// it raw. This pins two things at once — the frozen `_STORAGE_SLOT`
-    /// literal inside each contract really is the ERC-7201 formula (they are
-    /// two independent computations that must agree), and the struct really
-    /// lives there, packing included: `router` (20B) + `ethChainSelector` (8B)
+    /// it raw. This pins three things at once — `ArticleLib.STORAGE_SLOT` and
+    /// `GatewayLib.STORAGE_SLOT` really are the ERC-7201 formula (id-derived,
+    /// constant and raw slots are independent computations that must agree),
+    /// and the struct really lives there, packing included: `router` (20B) + `ethChainSelector` (8B)
     /// share word 1 of the hub namespace, exactly as the pre-migration
     /// contract layout packed them.
     function test_storageLivesAtErc7201Slot() public {
@@ -136,6 +138,7 @@ contract UpgradeTest is ArticleTestBase {
 
         bytes32 hubSlot =
             keccak256(abi.encode(uint256(keccak256("eulerphi.storage.ArticleAnchor")) - 1)) & ~bytes32(uint256(0xff));
+        assertEq(ArticleLib.STORAGE_SLOT, hubSlot, "hub slot constant == formula");
         uint256 base = uint256(vm.load(address(hub), hubSlot));
         assertEq(address(uint160(base)), hub.admin(), "admin lives at the namespace base");
         uint256 word1 = uint256(vm.load(address(hub), bytes32(uint256(hubSlot) + 1)));
@@ -157,6 +160,7 @@ contract UpgradeTest is ArticleTestBase {
         gw.receiveRoot(0, bytes32(uint256(0xDEAD))); // makes nextBatch non-zero, so the read is not vacuous
         bytes32 gwSlot = keccak256(abi.encode(uint256(keccak256("eulerphi.storage.SubmissionGateway")) - 1))
             & ~bytes32(uint256(0xff));
+        assertEq(GatewayLib.STORAGE_SLOT, gwSlot, "gateway slot constant == formula");
         assertEq(uint256(vm.load(address(gw), gwSlot)), gw.nextBatch(), "nextBatch at the gateway namespace base");
     }
 

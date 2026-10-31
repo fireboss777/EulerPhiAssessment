@@ -2,11 +2,11 @@
 pragma solidity ^0.8.27;
 
 import { ArticleAnchorGetters } from "./ArticleAnchorGetters.sol";
-import { ArticleLib, ArticleSubmission } from "./ArticleLib.sol";
 import { Client } from "./interfaces/Client.sol";
 import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
 import { IRouterClient } from "./interfaces/IRouterClient.sol";
 import { ISubmissionGateway } from "./interfaces/ISubmissionGateway.sol";
+import { ArticleLib, ArticleSubmission } from "./libraries/ArticleLib.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import { ECDSA } from "solady/utils/ECDSA.sol";
@@ -17,8 +17,10 @@ import { MerkleTreeLib } from "solady/utils/MerkleTreeLib.sol";
 /// @title ArticleAnchor — the canonical journal & batch root registry (hub).
 /// @notice Every external entry point, getter, constant and event is declared
 /// and documented on `IArticleAnchor`, which this contract inherits — read the
-/// interface for the API. Only implementation-side members (constructor,
-/// modifiers, `internal` helpers) are documented here.
+/// interface for the API. Its ERC-7201 namespace (slot constant + pointer)
+/// lives in `ArticleLib`, so this contract declares NO state variable. Only
+/// implementation-side members (constructor, modifiers, `internal` helpers)
+/// are documented here.
 contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, EIP712, UUPSUpgradeable {
     // ---------------------------------------------------------------------
     // Constants (see plan: batch policy)
@@ -38,20 +40,6 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
     uint256 public constant NOTARY_GAS_LIMIT = 200_000;
     /// @dev floor(N/2) of secp256k1: signatures must be canonical low-s (EIP-2).
     uint256 private constant _HIGH_S_MAX = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
-
-    // ---------------------------------------------------------------------
-    // ERC-7201 namespaced storage — the whole layout lives in
-    // `IArticleAnchor.Storage` (this contract declares NO state variable)
-    // ---------------------------------------------------------------------
-
-    /// @dev ERC-7201 formula — `keccak256(abi.encode(uint256(keccak256(
-    /// "eulerphi.storage.ArticleAnchor")) - 1)) & ~bytes32(uint256(0xff))`.
-    /// Frozen as a literal because inline assembly accepts only direct number
-    /// constants (`$.slot := _STORAGE_SLOT`) and solc 0.8.33 has no
-    /// `erc7201` builtin (0.8.37+). `test_storageLivesAtErc7201Slot`
-    /// recomputes the formula from the id and reads it back, so the literal
-    /// can never drift from the namespace it claims to be.
-    bytes32 private constant _STORAGE_SLOT = 0x15dbd2ada1700fe5c9739ea67ae301bf73151c332fba02dda344d3dd844a0300;
 
     modifier onlyAdmin() {
         _checkAdmin();
@@ -75,7 +63,7 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
     /// @inheritdoc IArticleAnchor
     function initialize(address admin_, address router_, uint64 chainSelector_) external initializer {
         require(admin_ != address(0), ZeroAdmin());
-        Storage storage $ = _getStorage();
+        Storage storage $ = ArticleLib.getStorage();
         $.admin = admin_;
         $.router = router_;
         $.ethChainSelector = chainSelector_;
@@ -83,7 +71,7 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
 
     /// @inheritdoc IArticleAnchor
     function setGateway(address gateway_) external onlyAdmin {
-        _getStorage().gateway = gateway_;
+        ArticleLib.getStorage().gateway = gateway_;
     }
 
     // ---------------------------------------------------------------------
@@ -106,7 +94,7 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
 
     /// @inheritdoc IArticleAnchor
     function notarize(uint256 batchIndex) external payable {
-        Storage storage $ = _getStorage();
+        Storage storage $ = ArticleLib.getStorage();
         uint256 anchoredAt = $.anchoredAtBlock[batchIndex];
         require(anchoredAt != 0, NoBatch());
         require(block.number >= anchoredAt + NOTARY_K, NotFinal());
@@ -128,7 +116,7 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
 
     /// @inheritdoc IArticleAnchor
     function anchorNextBatch() external returns (bytes32 root) {
-        Storage storage $ = _getStorage();
+        Storage storage $ = ArticleLib.getStorage();
         uint256 start = $.lastAnchoredIndex;
         uint256 pending = $.journal.length - start;
         require(
@@ -159,7 +147,7 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
         view
         returns (bool)
     {
-        return MerkleProofLib.verifyCalldata(proof, _getStorage().rootAt[batchIndex], leaf);
+        return MerkleProofLib.verifyCalldata(proof, ArticleLib.getStorage().rootAt[batchIndex], leaf);
     }
 
     // ---------------------------------------------------------------------
@@ -168,7 +156,7 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
 
     /// @inheritdoc IArticleAnchor
     function consumeSubmittedArticle(Client.Any2EVMMessage calldata message) public {
-        Storage storage $ = _getStorage();
+        Storage storage $ = ArticleLib.getStorage();
         require(msg.sender == address($.router), NotRouter());
         require(message.sourceChainSelector == $.ethChainSelector, BadChain());
         require(abi.decode(message.sender, (address)) == $.gateway, BadSender());
@@ -182,7 +170,7 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
     // ---------------------------------------------------------------------
 
     function _submit(bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload) internal {
-        Storage storage $ = _getStorage();
+        Storage storage $ = ArticleLib.getStorage();
         require(block.timestamp <= payload.deadline, Expired());
         require(keccak256(abi.encode(payload)) == leafDigest, DigestMismatch());
         // Canonical 65-byte (r, s, v) only; low-s enforced (Solady's recover
@@ -217,7 +205,7 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
     /// children 2i+1/2i+2, so a leftover leaf pairs with an internal node).
     /// Kept in memory; any off-chain prover must use the same convention.
     function _buildRoot(uint256 start, uint256 end) internal view returns (bytes32) {
-        Storage storage $ = _getStorage();
+        Storage storage $ = ArticleLib.getStorage();
         uint256 n = end - start;
         bytes32[] memory leaves = new bytes32[](n);
         for (uint256 i; i < n; ++i) {
@@ -230,24 +218,12 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
         return ("EulerPhiArticle", "1");
     }
 
-    /// @dev The namespace pointer: every state access in this contract goes
-    /// through it. `ArticleAnchorGetters` declares it `virtual` and unimplemented, so the
-    /// literal belongs here — to the namespace owner — and not to the read
-    /// layer. `internal` is the least visibility that can `override`; a derived
-    /// implementation that needs a different layout must declare its OWN
-    /// namespace instead of silently extending this one.
-    function _getStorage() internal pure override returns (Storage storage $) {
-        assembly {
-            $.slot := _STORAGE_SLOT
-        }
-    }
-
     /// @dev The gate itself, pulled out of `onlyAdmin`: a modifier body is
     /// inlined at every use site, so one shared copy is smaller than two
     /// (`forge lint: unwrapped-modifier-logic`) — same storage read, same
     /// `AdminOnly()` revert, verified by the admin tests in `Upgrade.t.sol`.
     function _checkAdmin() private view {
-        Storage storage $ = _getStorage();
+        Storage storage $ = ArticleLib.getStorage();
         require(msg.sender == $.admin, AdminOnly());
     }
 }

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.27;
 
 import { ArticleAnchor } from "../../src/ArticleAnchor.sol";
-import { ArticleSubmission } from "../../src/ArticleLib.sol";
+import { ArticleSubmission } from "../../src/libraries/ArticleLib.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { Test } from "forge-std/Test.sol";
 import { ECDSA } from "solady/utils/ECDSA.sol";

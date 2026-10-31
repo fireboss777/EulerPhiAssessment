@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import { ArticleLib, ArticleSubmission } from "../src/ArticleLib.sol";
+import { ArticleLib, ArticleSubmission } from "../src/libraries/ArticleLib.sol";
 import { AuthorGate } from "./mocks/AuthorGate.sol";
 import { Test } from "forge-std/Test.sol";
 import { ECDSA } from "solady/utils/ECDSA.sol";
