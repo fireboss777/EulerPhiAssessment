@@ -5,7 +5,7 @@ import { ArticleAnchor } from "../src/ArticleAnchor.sol";
 import { SubmissionGateway } from "../src/SubmissionGateway.sol";
 import { Client } from "../src/interfaces/Client.sol";
 import { ISubmissionGateway } from "../src/interfaces/ISubmissionGateway.sol";
-import { ArticleSubmission } from "../src/libraries/ArticleLib.sol";
+import { ArticleLib, ArticleSubmission } from "../src/libraries/ArticleLib.sol";
 import { MockRouter } from "./mocks/MockRouter.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 
@@ -159,7 +159,7 @@ contract GatewayTest is ArticleTestBase {
         hub.setGateway(address(gw2)); // production wiring, not a dummy address
         _seedBatch(hub, 10);
         hub.anchorNextBatch();
-        vm.roll(hub.anchoredAtBlock(0) + hub.NOTARY_K());
+        vm.roll(hub.anchoredAtBlock(0) + ArticleLib.NOTARY_K);
         vm.deal(address(this), 1 ether);
 
         hub.notarize{ value: mock.fee() }(0); // hub-side encode (encodeCall)

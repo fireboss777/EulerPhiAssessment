@@ -17,30 +17,12 @@ import { MerkleTreeLib } from "solady/utils/MerkleTreeLib.sol";
 /// @title ArticleAnchor — the canonical journal & batch root registry (hub).
 /// @notice Every external entry point, getter, constant and event is declared
 /// and documented on `IArticleAnchor`, which this contract inherits — read the
-/// interface for the API. Its ERC-7201 namespace (slot constant + pointer)
-/// lives in `ArticleLib`, so this contract declares NO state variable. Only
+/// interface for the API. Its ERC-7201 namespace (slot + pointer) and its whole
+/// batch/notary/signature policy live in `ArticleLib` as `public constant`s, so
+/// this contract declares NO state variable and NO constant. Only
 /// implementation-side members (constructor, modifiers, `internal` helpers)
 /// are documented here.
 contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, EIP712, UUPSUpgradeable {
-    // ---------------------------------------------------------------------
-    // Constants (see plan: batch policy)
-    // ---------------------------------------------------------------------
-
-    /// @inheritdoc IArticleAnchor
-    uint256 public constant MIN_BATCH = 10;
-    /// @inheritdoc IArticleAnchor
-    uint256 public constant MAX_BATCH = 200;
-    /// @inheritdoc IArticleAnchor
-    uint256 public constant BATCH_DEADLINE = 6 hours;
-    /// @inheritdoc IArticleAnchor
-    uint256 public constant RATE_LIMIT = 60 minutes;
-    /// @inheritdoc IArticleAnchor
-    uint256 public constant NOTARY_K = 64;
-    /// @inheritdoc IArticleAnchor
-    uint256 public constant NOTARY_GAS_LIMIT = 200_000;
-    /// @dev floor(N/2) of secp256k1: signatures must be canonical low-s (EIP-2).
-    uint256 private constant _HIGH_S_MAX = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
-
     modifier onlyAdmin() {
         _checkAdmin();
         _;
@@ -97,14 +79,14 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
         Storage storage $ = ArticleLib.getStorage();
         uint256 anchoredAt = $.anchoredAtBlock[batchIndex];
         require(anchoredAt != 0, NoBatch());
-        require(block.number >= anchoredAt + NOTARY_K, NotFinal());
+        require(block.number >= anchoredAt + ArticleLib.NOTARY_K, NotFinal());
 
         Client.EVM2AnyMessage memory m = Client.EVM2AnyMessage({
             receiver: abi.encode($.gateway),
             data: abi.encodeCall(ISubmissionGateway.receiveRoot, (batchIndex, $.rootAt[batchIndex])),
             tokenAmounts: new Client.EVMTokenAmount[](0),
             feeToken: address(0),
-            extraArgs: Client._argsToBytesV1(NOTARY_GAS_LIMIT)
+            extraArgs: Client._argsToBytesV1(ArticleLib.NOTARY_GAS_LIMIT)
         });
         bytes32 messageId = IRouterClient($.router).ccipSend{ value: msg.value }($.ethChainSelector, m);
         emit Notarized(batchIndex, $.rootAt[batchIndex], messageId);
@@ -120,11 +102,12 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
         uint256 start = $.lastAnchoredIndex;
         uint256 pending = $.journal.length - start;
         require(
-            pending > 0 && (pending >= MIN_BATCH || block.timestamp >= $.batchOpenedAt + BATCH_DEADLINE),
+            pending > 0
+                && (pending >= ArticleLib.MIN_BATCH || block.timestamp >= $.batchOpenedAt + ArticleLib.BATCH_DEADLINE),
             BatchNotReady()
         );
 
-        uint256 count = pending > MAX_BATCH ? MAX_BATCH : pending;
+        uint256 count = pending > ArticleLib.MAX_BATCH ? ArticleLib.MAX_BATCH : pending;
         uint256 end = start + count;
         root = _buildRoot(start, end);
 
@@ -180,10 +163,10 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
         assembly ("memory-safe") {
             s := mload(add(sig, 0x40)) // `s` at offset 0x40 of the bytes payload
         }
-        require(uint256(s) <= _HIGH_S_MAX, NonCanonicalSignature());
+        require(uint256(s) <= ArticleLib.HIGH_S_MAX, NonCanonicalSignature());
         bytes32 digest = _hashTypedData(ArticleLib.hashStruct(payload));
         require(ECDSA.recover(digest, sig) == payload.author, NotAuthor());
-        require(block.timestamp >= $.lastSubmit[payload.author] + RATE_LIMIT, RateLimited());
+        require(block.timestamp >= $.lastSubmit[payload.author] + ArticleLib.RATE_LIMIT, RateLimited());
         require(!$.usedUuid[payload.author][payload.uuid], DuplicateUuid());
 
         $.usedUuid[payload.author][payload.uuid] = true;

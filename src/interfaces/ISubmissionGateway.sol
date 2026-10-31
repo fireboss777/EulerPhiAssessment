@@ -32,10 +32,11 @@ interface ISubmissionGateway {
     /// namespace — same rule as the hub: the implementation declares no state
     /// variable, everything lives here at
     /// `keccak256(abi.encode(uint256(keccak256("eulerphi.storage.SubmissionGateway")) - 1)) & ~bytes32(uint256(0xff))`
-    /// (frozen literal in `SubmissionGateway`, proven by
+    /// (frozen as `GatewayLib.STORAGE_SLOT`, proven by
     /// `test_storageLivesAtErc7201Slot`). Only this cursor and the root record
     /// are state: `ROUTER`, `HUB` and `BASE_CHAIN_SELECTOR` are `immutable`
-    /// (bytecode) and `SUBMIT_GAS_LIMIT` is `constant`.
+    /// (bytecode), and the fee-lane policy (`SUBMIT_GAS_LIMIT`) lives in
+    /// `GatewayLib` — this contract holds no constant of its own.
     ///
     /// @custom:storage-location erc7201:eulerphi.storage.SubmissionGateway
     struct Storage {
@@ -119,12 +120,8 @@ interface ISubmissionGateway {
     function receiveRoot(uint256 batchIndex, bytes32 root) external;
 
     // ---------------------------------------------------------------------
-    // Views — configuration & record
+    // Views — configuration
     // ---------------------------------------------------------------------
-
-    /// @notice Hub-side calldata for a journaled submission is small; 400k
-    /// covers digest+sig checks + journal SSTORE with generous headroom.
-    function SUBMIT_GAS_LIMIT() external view returns (uint256);
 
     /// @notice Chainlink Router on Ethereum (immutable — no lane retargeting).
     function ROUTER() external view returns (address);

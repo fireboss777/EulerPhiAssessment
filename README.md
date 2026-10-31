@@ -164,13 +164,13 @@ production-shaped numbers, not direct-call ones.
 |---|---|---:|---|
 | `submitArticle` — first leaf (cold slots) | relayer / writer | **129,349** | opens the batch window |
 | `submitArticle` — steady state | relayer / writer | **87,330** | 1h per-author rate limit applies |
-| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **126,688** | ≈98k fixed window/tree overhead |
-| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **676,698** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
-| `verifyAgainstBatch` — 10-leaf root | reader | **15,109** | an `eth_call` costs you nothing |
-| `notarize` — our side (K-gated) | keeper | **38,697** | + CCIP fee + the router's own execution |
-| gateway `submitArticle` — our side | writer | **37,170** | + L1 gas + CCIP fee (router's execution on top) |
+| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **126,710** | ≈98k fixed window/tree overhead |
+| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **676,720** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
+| `verifyAgainstBatch` — 10-leaf root | reader | **15,086** | an `eth_call` costs you nothing |
+| `notarize` — our side (K-gated) | keeper | **38,741** | + CCIP fee + the router's own execution |
+| gateway `submitArticle` — our side | writer | **37,148** | + L1 gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 13,540 B runtime, `SubmissionGateway` 5,712 B
+Contract sizes: `ArticleAnchor` 13,156 B runtime, `SubmissionGateway` 5,652 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
@@ -523,9 +523,13 @@ src/
   SubmissionGatewayGetters.sol
                            the gateway's 2 read getters, same shape
   libraries/
-    ArticleLib.sol         EIP-712 struct + typehash + the hub's ERC-7201 slot
-                           constant and namespace pointer (`getStorage()`)
-    GatewayLib.sol         the gateway's ERC-7201 slot constant + pointer
+    ArticleLib.sol         EIP-712 struct + typehash, the hub's ERC-7201 slot +
+                           namespace pointer (`getStorage()`), and every hub
+                           policy constant as `public`: MIN_BATCH, MAX_BATCH,
+                           BATCH_DEADLINE, RATE_LIMIT, HIGH_S_MAX, NOTARY_K,
+                           NOTARY_GAS_LIMIT — the contract holds none of them
+    GatewayLib.sol         the gateway's ERC-7201 slot + pointer and its
+                           `public SUBMIT_GAS_LIMIT`; contracts hold none
   interfaces/
     IArticleAnchor.sol     hub's own public ABI, laid out in style-guide order
                            (events, then errors, then functions: actions first,
@@ -600,11 +604,13 @@ guide leaves room:
 - **library functions keep bare names** (`ArticleLib.hashStruct`) — the
   library namespace already says "non-external", and that is what Solady's and
   OpenZeppelin's libraries do;
-- **internal constants keep bare `UPPER_CASE`** (`ArticleLib.TYPEHASH`,
-  `ArticleLib.STORAGE_SLOT`, `ArticleTestBase.FORGER_KEY`) — prefixing them
-  yields `_TYPEHASH`, which reads as collision avoidance rather than
-  visibility. Every `private` constant does carry the underscore
-  (`_HIGH_S_MAX`).
+- **constants keep bare `UPPER_CASE`, and every one in `src/` is `public`
+  on its library** (`ArticleLib.TYPEHASH`, `ArticleLib.STORAGE_SLOT`,
+  `ArticleLib.MIN_BATCH`, `ArticleLib.HIGH_S_MAX`,
+  `GatewayLib.SUBMIT_GAS_LIMIT`) — prefixing them yields `_TYPEHASH`, which
+  reads as collision avoidance rather than visibility, and a contract-level
+  copy would need a getter nobody asked for. No contract in `src/` declares a
+  constant at all; `ArticleTestBase.FORGER_KEY`, in tests, stays `internal`.
 
 Three exceptions, each leaning on the guide's own preamble: *"In the event of
 conflicts, project specific style guides take precedence"* and *"know when to

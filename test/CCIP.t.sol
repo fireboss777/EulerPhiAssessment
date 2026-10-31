@@ -5,7 +5,7 @@ import { ArticleAnchor } from "../src/ArticleAnchor.sol";
 import { Client } from "../src/interfaces/Client.sol";
 import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
 import { ISubmissionGateway } from "../src/interfaces/ISubmissionGateway.sol";
-import { ArticleSubmission } from "../src/libraries/ArticleLib.sol";
+import { ArticleLib, ArticleSubmission } from "../src/libraries/ArticleLib.sol";
 import { MockRouter } from "./mocks/MockRouter.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 
@@ -103,7 +103,7 @@ contract CCIPTest is ArticleTestBase {
         _seedBatch(hub, 10);
         hub.anchorNextBatch();
         uint256 anchoredAt = hub.anchoredAtBlock(0);
-        vm.roll(anchoredAt + hub.NOTARY_K() - 1);
+        vm.roll(anchoredAt + ArticleLib.NOTARY_K - 1);
 
         vm.expectRevert(IArticleAnchor.NotFinal.selector);
         hub.notarize{ value: 0.01 ether }(0);
@@ -112,7 +112,7 @@ contract CCIPTest is ArticleTestBase {
     function test_notarizeSendsAfterK() public {
         _seedBatch(hub, 10);
         hub.anchorNextBatch();
-        vm.roll(hub.anchoredAtBlock(0) + hub.NOTARY_K());
+        vm.roll(hub.anchoredAtBlock(0) + ArticleLib.NOTARY_K);
         bytes32 root = hub.rootAt(0);
 
         hub.notarize{ value: 0.02 ether }(0);

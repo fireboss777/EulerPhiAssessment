@@ -14,12 +14,9 @@ import { GatewayLib } from "./libraries/GatewayLib.sol";
 /// and documented on `ISubmissionGateway`, which this contract inherits — read
 /// the interface for the API (including the paid-lane / no-ecrecover design
 /// notes). Its ERC-7201 namespace (slot constant + pointer) lives in
-/// `GatewayLib`, so this contract declares NO state variable. Only
-/// implementation-side members are documented here.
+/// `GatewayLib`, so this contract declares NO state variable and NO constant.
+/// Only implementation-side members are documented here.
 contract SubmissionGateway is ISubmissionGateway, SubmissionGatewayGetters, IAny2EVMMessageReceiver {
-    /// @inheritdoc ISubmissionGateway
-    uint256 public constant SUBMIT_GAS_LIMIT = 400_000;
-
     /// @inheritdoc ISubmissionGateway
     address public immutable ROUTER;
     /// @inheritdoc ISubmissionGateway
@@ -51,7 +48,7 @@ contract SubmissionGateway is ISubmissionGateway, SubmissionGatewayGetters, IAny
             data: abi.encode(leafDigest, sig, payload),
             tokenAmounts: new Client.EVMTokenAmount[](0),
             feeToken: address(0), // native fee via msg.value
-            extraArgs: Client._argsToBytesV1(SUBMIT_GAS_LIMIT)
+            extraArgs: Client._argsToBytesV1(GatewayLib.SUBMIT_GAS_LIMIT)
         });
 
         uint256 fee = IRouterClient(ROUTER).getFee(BASE_CHAIN_SELECTOR, m);

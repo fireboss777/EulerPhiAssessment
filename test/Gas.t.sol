@@ -3,7 +3,7 @@ pragma solidity ^0.8.27;
 
 import { ArticleAnchor } from "../src/ArticleAnchor.sol";
 import { SubmissionGateway } from "../src/SubmissionGateway.sol";
-import { ArticleSubmission } from "../src/libraries/ArticleLib.sol";
+import { ArticleLib, ArticleSubmission } from "../src/libraries/ArticleLib.sol";
 import { MockRouter } from "./mocks/MockRouter.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 import { console } from "forge-std/console.sol";
@@ -72,7 +72,7 @@ contract GasTest is ArticleTestBase {
         ArticleAnchor hub = _newHub(address(mock));
         _seedBatch(hub, 10);
         hub.anchorNextBatch();
-        vm.roll(hub.anchoredAtBlock(0) + hub.NOTARY_K());
+        vm.roll(hub.anchoredAtBlock(0) + ArticleLib.NOTARY_K);
         vm.deal(address(this), 1 ether);
         vm.cool(address(hub));
         vm.cool(address(mock));

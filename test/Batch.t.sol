@@ -3,18 +3,19 @@ pragma solidity ^0.8.27;
 
 import { ArticleAnchor } from "../src/ArticleAnchor.sol";
 import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
+import { ArticleLib } from "../src/libraries/ArticleLib.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 import { MerkleTreeLib } from "solady/utils/MerkleTreeLib.sol";
 
 contract BatchTest is ArticleTestBase {
     function test_anchorRequiresMinOrDeadline() public {
         ArticleAnchor hub = _deployHub();
-        _seedBatch(hub, hub.MIN_BATCH() - 1); // 9 < 10, same block => no deadline either
+        _seedBatch(hub, ArticleLib.MIN_BATCH - 1); // 9 < 10, same block => no deadline either
 
         vm.expectRevert(IArticleAnchor.BatchNotReady.selector);
         hub.anchorNextBatch();
 
-        vm.warp(block.timestamp + hub.BATCH_DEADLINE());
+        vm.warp(block.timestamp + ArticleLib.BATCH_DEADLINE);
         hub.anchorNextBatch();
 
         assertTrue(hub.rootAt(0) != bytes32(0), "root anchored");
@@ -25,7 +26,7 @@ contract BatchTest is ArticleTestBase {
 
     function test_anchorAtMaxBatch() public {
         ArticleAnchor hub = _deployHub();
-        _seedBatch(hub, hub.MAX_BATCH() + 5); // 205 pending
+        _seedBatch(hub, ArticleLib.MAX_BATCH + 5); // 205 pending
 
         hub.anchorNextBatch();
         assertEq(hub.lastAnchoredIndex(), 200, "capped at MAX_BATCH");
@@ -33,7 +34,7 @@ contract BatchTest is ArticleTestBase {
         vm.expectRevert(IArticleAnchor.BatchNotReady.selector); // 5 pending, < MIN, fresh window
         hub.anchorNextBatch();
 
-        vm.warp(block.timestamp + hub.BATCH_DEADLINE() + 1);
+        vm.warp(block.timestamp + ArticleLib.BATCH_DEADLINE + 1);
         hub.anchorNextBatch();
         assertEq(hub.lastAnchoredIndex(), 205, "remainder anchored");
         assertTrue(hub.rootAt(1) != bytes32(0), "second root exists");
@@ -67,7 +68,7 @@ contract BatchTest is ArticleTestBase {
         bytes32 rebuilt = MerkleTreeLib.root(MerkleTreeLib.build(_sliceJournal(hub, 0, 10)));
         assertEq(rebuilt, root0, "batch0 root reproducible from journal");
 
-        vm.warp(block.timestamp + hub.BATCH_DEADLINE() + 1);
+        vm.warp(block.timestamp + ArticleLib.BATCH_DEADLINE + 1);
         hub.anchorNextBatch();
 
         assertEq(hub.rootAt(0), root0, "anchored root frozen after later append");

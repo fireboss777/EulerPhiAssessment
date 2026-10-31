@@ -15,9 +15,10 @@ import { Client } from "./Client.sol";
 ///  - role-gated publishing: gate submission on an `isAuthor[author]` registry;
 ///  - meta-tx sponsorship: wrap `submitArticle` behind a forwarder.
 ///
-/// Constants are declared as getter functions here because Solidity forbids
-/// variables in interfaces (Error 8274); the implementation's
-/// `public constant` getters satisfy them.
+/// Policy constants (`MIN_BATCH`, `RATE_LIMIT`, `NOTARY_K` …) are NOT here
+/// either: they live as `public constant`s in `ArticleLib`. Solidity forbids
+/// variables in interfaces (Error 8274), and a contract getter forwarding a
+/// value the compiler inlines would be pure indirection.
 ///
 /// @dev Deliberately NOT redeclared here (they come from base contracts, and
 /// redeclaring them would force double-base overrides for no gain):
@@ -25,7 +26,7 @@ import { Client } from "./Client.sol";
 /// `proxiableUUID()`, `UPGRADE_INTERFACE_VERSION()` (OpenZeppelin
 /// `UUPSUpgradeable`); and the `Upgraded` event — emitted by OZ's inlined
 /// `ERC1967Utils`, so it IS part of this contract's ABI without being
-/// declared by us. Everything else — 14 functions and 3 events — is declared
+/// declared by us. Everything else — 8 functions and 3 events — is declared
 /// below. The 14 read getters are deliberately NOT here: they live in
 /// `IArticleAnchorGetters`, brought in by `ArticleAnchorGetters`, which this
 /// contract also inherits — the union of the two IS its complete ABI.
@@ -34,7 +35,7 @@ interface IArticleAnchor {
     /// namespace. The implementation declares NO state variable of its own:
     /// every read and write goes through this struct at the fixed slot
     /// `keccak256(abi.encode(uint256(keccak256("eulerphi.storage.ArticleAnchor")) - 1)) & ~bytes32(uint256(0xff))`
-    /// — frozen as a literal in `ArticleAnchor` (inline assembly accepts only
+    /// — frozen as `ArticleLib.STORAGE_SLOT` (inline assembly accepts only
     /// number constants) and proven equal to this formula by
     /// `test_storageLivesAtErc7201Slot`. Why it is practical: a future base
     /// contract cannot collide with this layout, the layout is auditable as
@@ -194,28 +195,6 @@ interface IArticleAnchor {
     /// older than `BATCH_DEADLINE`; at most `MAX_BATCH` leaves per call.
     /// @return root The freshly frozen Merkle root for `[lastAnchoredIndex, end)`.
     function anchorNextBatch() external returns (bytes32 root);
-
-    // ---------------------------------------------------------------------
-    // Views — batch & lane policy
-    // ---------------------------------------------------------------------
-
-    /// @notice Leaves required before a batch may close without waiting.
-    function MIN_BATCH() external view returns (uint256);
-
-    /// @notice Hard cap on leaves taken per batch (the window splits).
-    function MAX_BATCH() external view returns (uint256);
-
-    /// @notice Age of the open window after which a partial batch may close.
-    function BATCH_DEADLINE() external view returns (uint256);
-
-    /// @notice Minimum spacing between two submissions by the same author.
-    function RATE_LIMIT() external view returns (uint256);
-
-    /// @notice L2 block confirmations required before a root may be notarized upward.
-    function NOTARY_K() external view returns (uint256);
-
-    /// @notice Receiver-side gas limit attached to the CCIP notary message.
-    function NOTARY_GAS_LIMIT() external view returns (uint256);
 
     // ---------------------------------------------------------------------
     // Views — verification (reader path)

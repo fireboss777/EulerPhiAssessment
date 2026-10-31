@@ -16,10 +16,14 @@ struct ArticleSubmission {
     uint256 deadline;
 }
 
-/// @notice Pure hashing helpers for `ArticleSubmission`.
+/// @notice The hub's shared vocabulary, in one place: the EIP-712 envelope and
+/// its typehash, the batch/submission/notary policy constants, and the
+/// ERC-7201 namespace (slot constant + pointer). Every constant here is
+/// `public`, so it is readable from this library's own ABI as well as inlined
+/// at each use site — no contract exposes a getter for any of them.
 library ArticleLib {
     /// @dev keccak256 of the canonical type string.
-    bytes32 internal constant TYPEHASH = keccak256(
+    bytes32 public constant TYPEHASH = keccak256(
         "ArticleSubmission(address author,bytes32 titleHash,bytes32 bodyHash,"
         "bytes32 cidHash,bytes32 uuid,uint256 timestamp,uint256 deadline)"
     );
@@ -30,7 +34,28 @@ library ArticleLib {
     /// constants (solc 7615) and solc 0.8.33 has no `erc7201` builtin (0.8.37+).
     /// `test_storageLivesAtErc7201Slot` recomputes it from the id and reads the
     /// raw slots, so this constant cannot drift from the namespace it claims.
-    bytes32 internal constant STORAGE_SLOT = 0x15dbd2ada1700fe5c9739ea67ae301bf73151c332fba02dda344d3dd844a0300;
+    bytes32 public constant STORAGE_SLOT = 0x15dbd2ada1700fe5c9739ea67ae301bf73151c332fba02dda344d3dd844a0300;
+
+    /// @notice Leaves required before a batch may close without waiting.
+    uint256 public constant MIN_BATCH = 10;
+
+    /// @notice Hard cap on leaves taken per batch (the window splits).
+    uint256 public constant MAX_BATCH = 200;
+
+    /// @notice Age of the open window after which a partial batch may close.
+    uint256 public constant BATCH_DEADLINE = 6 hours;
+
+    /// @notice Minimum spacing between two submissions by the same author.
+    uint256 public constant RATE_LIMIT = 60 minutes;
+
+    /// @dev floor(N/2) of secp256k1: signatures must be canonical low-s (EIP-2).
+    uint256 public constant HIGH_S_MAX = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
+
+    /// @notice L2 block confirmations required before a root may be notarized upward.
+    uint256 public constant NOTARY_K = 64;
+
+    /// @notice Receiver-side gas limit attached to the CCIP notary message.
+    uint256 public constant NOTARY_GAS_LIMIT = 200_000;
 
     /// @dev EIP-712 `hashStruct` (domain binding is applied by the caller via
     /// `_hashTypedData`; this is the chain-agnostic struct commitment).

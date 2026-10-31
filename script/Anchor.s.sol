@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import { ArticleAnchor } from "../src/ArticleAnchor.sol";
+import { ArticleLib } from "../src/libraries/ArticleLib.sol";
 import { Script } from "forge-std/Script.sol";
 import { console } from "forge-std/console.sol";
 
@@ -16,7 +17,8 @@ contract Anchor is Script {
 
         uint256 pending = hub.pendingLeaves();
         uint256 opened = hub.batchOpenedAt();
-        bool ready = pending > 0 && (pending >= hub.MIN_BATCH() || block.timestamp >= opened + hub.BATCH_DEADLINE());
+        bool ready =
+            pending > 0 && (pending >= ArticleLib.MIN_BATCH || block.timestamp >= opened + ArticleLib.BATCH_DEADLINE);
 
         if (!ready) {
             console.log("noop: batch not ready; pending =", pending);
