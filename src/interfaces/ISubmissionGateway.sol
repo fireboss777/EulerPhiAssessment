@@ -17,7 +17,7 @@ import {Client} from "./Client.sol";
 /// messages are priced by the attached fee instead of rejected by ecrecover.
 ///
 /// 2. Notary receiver: roots notarized upward by the hub arrive via CCIP,
-/// pinned to (router, baseChainSelector, hub) and applied strictly in batch
+/// pinned to (ROUTER, BASE_CHAIN_SELECTOR, HUB) and applied strictly in batch
 /// order — the audit-grade "original tree" record on Ethereum.
 ///
 /// @dev The hub encodes its CCIP payload with `abi.encodeCall` against
@@ -32,7 +32,7 @@ interface ISubmissionGateway {
     /// `keccak256(abi.encode(uint256(keccak256("eulerphi.storage.SubmissionGateway")) - 1)) & ~bytes32(uint256(0xff))`
     /// (frozen literal in `SubmissionGateway`, proven by
     /// `test_storageLivesAtErc7201Slot`). Only this cursor and the root record
-    /// are state: `router`, `hub` and `baseChainSelector` are `immutable`
+    /// are state: `ROUTER`, `HUB` and `BASE_CHAIN_SELECTOR` are `immutable`
     /// (bytecode) and `SUBMIT_GAS_LIMIT` is `constant`.
     ///
     /// @custom:storage-location erc7201:eulerphi.storage.SubmissionGateway
@@ -125,14 +125,14 @@ interface ISubmissionGateway {
     function SUBMIT_GAS_LIMIT() external view returns (uint256);
 
     /// @notice Chainlink Router on Ethereum (immutable — no lane retargeting).
-    function router() external view returns (address);
+    function ROUTER() external view returns (address);
 
     /// @notice The `ArticleAnchor` proxy on the hub chain: receiver of the
     /// paid lane and the only whitelisted sender of notarized roots.
-    function hub() external view returns (address);
+    function HUB() external view returns (address);
 
     /// @notice Chainlink chain selector of the hub chain (not a chain id).
-    function baseChainSelector() external view returns (uint64);
+    function BASE_CHAIN_SELECTOR() external view returns (uint64);
 
     /// @notice Next batch index acceptable — no skips, no reordering, no replays.
     function nextBatch() external view returns (uint256);

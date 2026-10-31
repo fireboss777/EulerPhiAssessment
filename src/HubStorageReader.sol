@@ -16,11 +16,11 @@ import {IHubStorageReader} from "./interfaces/IHubStorageReader.sol";
 /// on ITS chain.
 contract HubStorageReader is IHubStorageReader {
     /// @inheritdoc IHubStorageReader
-    address public immutable hubTarget;
+    address public immutable HUB_TARGET;
 
     constructor(address hubTarget_) {
         if (hubTarget_ == address(0)) revert ZeroTarget();
-        hubTarget = hubTarget_;
+        HUB_TARGET = hubTarget_;
     }
 
     // ---------------------------------------------------------------------
@@ -29,77 +29,77 @@ contract HubStorageReader is IHubStorageReader {
 
     /// @inheritdoc IHubGetters
     function admin() external view returns (address) {
-        return IArticleAnchor(hubTarget).admin();
+        return IArticleAnchor(HUB_TARGET).admin();
     }
 
     /// @inheritdoc IHubGetters
     function router() external view returns (address) {
-        return IArticleAnchor(hubTarget).router();
+        return IArticleAnchor(HUB_TARGET).router();
     }
 
     /// @inheritdoc IHubGetters
     function ethChainSelector() external view returns (uint64) {
-        return IArticleAnchor(hubTarget).ethChainSelector();
+        return IArticleAnchor(HUB_TARGET).ethChainSelector();
     }
 
     /// @inheritdoc IHubGetters
     function gateway() external view returns (address) {
-        return IArticleAnchor(hubTarget).gateway();
+        return IArticleAnchor(HUB_TARGET).gateway();
     }
 
     /// @inheritdoc IHubGetters
     function batchOpenedAt() external view returns (uint256) {
-        return IArticleAnchor(hubTarget).batchOpenedAt();
+        return IArticleAnchor(HUB_TARGET).batchOpenedAt();
     }
 
     /// @inheritdoc IHubGetters
     function lastAnchoredIndex() external view returns (uint256) {
-        return IArticleAnchor(hubTarget).lastAnchoredIndex();
+        return IArticleAnchor(HUB_TARGET).lastAnchoredIndex();
     }
 
     /// @inheritdoc IHubGetters
     function anchoredBatches() external view returns (uint256) {
-        return IArticleAnchor(hubTarget).anchoredBatches();
+        return IArticleAnchor(HUB_TARGET).anchoredBatches();
     }
 
     /// @inheritdoc IHubGetters
     function journalLength() external view returns (uint256) {
-        return IArticleAnchor(hubTarget).journalLength();
+        return IArticleAnchor(HUB_TARGET).journalLength();
     }
 
     /// @inheritdoc IHubGetters
     function pendingLeaves() external view returns (uint256) {
-        return IArticleAnchor(hubTarget).pendingLeaves();
+        return IArticleAnchor(HUB_TARGET).pendingLeaves();
     }
 
     /// @inheritdoc IHubGetters
     function journal(uint256 i) external view returns (bytes32) {
-        return IArticleAnchor(hubTarget).journal(i);
+        return IArticleAnchor(HUB_TARGET).journal(i);
     }
 
     /// @inheritdoc IHubGetters
     function usedUuid(address author, bytes32 uuid) external view returns (bool) {
-        return IArticleAnchor(hubTarget).usedUuid(author, uuid);
+        return IArticleAnchor(HUB_TARGET).usedUuid(author, uuid);
     }
 
     /// @inheritdoc IHubGetters
     function lastSubmit(address author) external view returns (uint256) {
-        return IArticleAnchor(hubTarget).lastSubmit(author);
+        return IArticleAnchor(HUB_TARGET).lastSubmit(author);
     }
 
     /// @inheritdoc IHubGetters
     function rootAt(uint256 batchIndex) external view returns (bytes32) {
-        return IArticleAnchor(hubTarget).rootAt(batchIndex);
+        return IArticleAnchor(HUB_TARGET).rootAt(batchIndex);
     }
 
     /// @inheritdoc IHubGetters
     function anchoredAtBlock(uint256 batchIndex) external view returns (uint256) {
-        return IArticleAnchor(hubTarget).anchoredAtBlock(batchIndex);
+        return IArticleAnchor(HUB_TARGET).anchoredAtBlock(batchIndex);
     }
 
     /// @inheritdoc IHubStorageReader
     function hubSnapshot() external view returns (HubSnapshot memory out) {
-        IArticleAnchor h = IArticleAnchor(hubTarget);
+        IArticleAnchor h = IArticleAnchor(HUB_TARGET);
         out.admin = h.admin();
         out.router = h.router();
         out.ethChainSelector = h.ethChainSelector();

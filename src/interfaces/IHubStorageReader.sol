@@ -50,7 +50,7 @@ interface IHubStorageReader is IHubGetters {
     error ZeroTarget();
 
     /// @notice The hub proxy this reader was bound to.
-    function hubTarget() external view returns (address);
+    function HUB_TARGET() external view returns (address);
 
     /// @notice The whole scalar state of the hub namespace in one call.
     function hubSnapshot() external view returns (HubSnapshot memory);

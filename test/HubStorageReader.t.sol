@@ -21,7 +21,7 @@ contract HubStorageReaderTest is ArticleTestBase {
     }
 
     function test_boundTargetAndZeroTargetReverts() public {
-        assertEq(reader.hubTarget(), address(hub), "hub bound");
+        assertEq(reader.HUB_TARGET(), address(hub), "hub bound");
 
         vm.expectRevert(IHubStorageReader.ZeroTarget.selector);
         new HubStorageReader(address(0));

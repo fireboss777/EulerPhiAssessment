@@ -20,8 +20,8 @@ pragma solidity ^0.8.27;
 interface IGatewayStorageReader {
     /// @notice Every non-mapping member of the gateway namespace, in one call.
     /// @dev The gateway's other member, `notarizedRoot`, is a mapping — read it
-    /// through `notarizedRoot(uint256)`. Its `router`, `hub` and
-    /// `baseChainSelector` are `immutable` (bytecode, not namespace state), so
+    /// through `notarizedRoot(uint256)`. Its `ROUTER`, `HUB` and
+    /// `BASE_CHAIN_SELECTOR` are `immutable` (bytecode, not namespace state), so
     /// they are deliberately absent.
     struct GatewaySnapshot {
         uint256 nextBatch;
@@ -31,7 +31,7 @@ interface IGatewayStorageReader {
     error ZeroTarget();
 
     /// @notice The gateway this reader was bound to.
-    function gatewayTarget() external view returns (address);
+    function GATEWAY_TARGET() external view returns (address);
 
     // ---------------------------------------------------------------------
     // Gateway namespace (`eulerphi.storage.SubmissionGateway`) — field getters

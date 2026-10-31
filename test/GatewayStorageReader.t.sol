@@ -23,7 +23,7 @@ contract GatewayStorageReaderTest is ArticleTestBase {
     }
 
     function test_boundTargetAndZeroTargetReverts() public {
-        assertEq(reader.gatewayTarget(), address(gw), "gateway bound");
+        assertEq(reader.GATEWAY_TARGET(), address(gw), "gateway bound");
 
         vm.expectRevert(IGatewayStorageReader.ZeroTarget.selector);
         new GatewayStorageReader(address(0));

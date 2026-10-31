@@ -17,11 +17,11 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
     uint256 public constant SUBMIT_GAS_LIMIT = 400_000;
 
     /// @inheritdoc ISubmissionGateway
-    address public immutable router;
+    address public immutable ROUTER;
     /// @inheritdoc ISubmissionGateway
-    address public immutable hub;
+    address public immutable HUB;
     /// @inheritdoc ISubmissionGateway
-    uint64 public immutable baseChainSelector;
+    uint64 public immutable BASE_CHAIN_SELECTOR;
 
     // ------------------------------------------------------------------
     // ERC-7201 namespaced storage — the whole layout lives in
@@ -36,9 +36,9 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
     bytes32 private constant _STORAGE_SLOT = 0x778a257330d5654b80658ea659939fc3425c0d3adecc97aad5fc044843fd4100;
 
     constructor(address router_, address hub_, uint64 baseChainSelector_) {
-        router = router_;
-        hub = hub_;
-        baseChainSelector = baseChainSelector_;
+        ROUTER = router_;
+        HUB = hub_;
+        BASE_CHAIN_SELECTOR = baseChainSelector_;
     }
 
     // ------------------------------------------------------------------
@@ -55,17 +55,17 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         require(keccak256(abi.encode(payload)) == leafDigest, DigestMismatch());
 
         Client.EVM2AnyMessage memory m = Client.EVM2AnyMessage({
-            receiver: abi.encode(hub),
+            receiver: abi.encode(HUB),
             data: abi.encode(leafDigest, sig, payload),
             tokenAmounts: new Client.EVMTokenAmount[](0),
             feeToken: address(0), // native fee via msg.value
             extraArgs: Client._argsToBytesV1(SUBMIT_GAS_LIMIT)
         });
 
-        uint256 fee = IRouterClient(router).getFee(baseChainSelector, m);
+        uint256 fee = IRouterClient(ROUTER).getFee(BASE_CHAIN_SELECTOR, m);
         require(msg.value >= fee, InsufficientFee());
 
-        bytes32 messageId = IRouterClient(router).ccipSend{value: fee}(baseChainSelector, m);
+        bytes32 messageId = IRouterClient(ROUTER).ccipSend{value: fee}(BASE_CHAIN_SELECTOR, m);
         emit SubmittedOnL1(msg.sender, leafDigest, messageId);
 
         // Return the unused portion (router keeps overpayment; we don't).
@@ -88,8 +88,8 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         external
         override(ISubmissionGateway, IAny2EVMMessageReceiver)
     {
-        require(message.sourceChainSelector == baseChainSelector, BadChain());
-        require(abi.decode(message.sender, (address)) == hub, BadSender());
+        require(message.sourceChainSelector == BASE_CHAIN_SELECTOR, BadChain());
+        require(abi.decode(message.sender, (address)) == HUB, BadSender());
         _applyNotaryPayload(message.data);
     }
 
@@ -105,7 +105,7 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
 
     /// @inheritdoc ISubmissionGateway
     function receiveRoot(uint256 batchIndex, bytes32 root) public {
-        require(msg.sender == address(router), NotRouter());
+        require(msg.sender == address(ROUTER), NotRouter());
         Storage storage $ = _getStorage();
         require(batchIndex == $.nextBatch, OutOfOrder());
 

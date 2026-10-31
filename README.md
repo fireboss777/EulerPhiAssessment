@@ -168,7 +168,7 @@ production-shaped numbers, not direct-call ones.
 | `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **676,664** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
 | `verifyAgainstBatch` — 10-leaf root | reader | **15,075** | an `eth_call` costs you nothing |
 | `notarize` — our side (K-gated) | keeper | **38,680** | + CCIP fee + the router's own execution |
-| gateway `submitArticle` — our side | writer | **37,148** | + L1 gas + CCIP fee (router's execution on top) |
+| gateway `submitArticle` — our side | writer | **37,170** | + L1 gas + CCIP fee (router's execution on top) |
 
 Contract sizes: `ArticleAnchor` 13,782 B runtime, `SubmissionGateway` 5,705 B, `HubStorageReader` 5,681 B, `GatewayStorageReader` 1,280 B
 (limits: 24,576 B).
@@ -582,8 +582,12 @@ the single reference.
 
 Naming follows the guide: `CapWords` for contracts, structs and events,
 `mixedCase` for functions and variables, `UPPER_CASE_WITH_UNDERSCORES` for
-constants, and a leading `_` on every non-external **function** (`_submit`,
-`_buildRoot`, `_deployHub`, `_signedLeaf`). Two deliberate calls where the
+constants — and for immutables as well, which the guide does not spell out but
+`forge lint` pins to the same shape (`ROUTER`, `HUB`, `BASE_CHAIN_SELECTOR`,
+`HUB_TARGET`, `GATEWAY_TARGET`); state-variable getters stay `mixedCase`
+(`admin`, `router` on the hub) because they are storage, not bytecode. Then a
+leading `_` on every non-external **function** (`_submit`, `_buildRoot`,
+`_deployHub`, `_signedLeaf`). Two deliberate calls where the
 guide leaves room:
 
 - **library functions keep bare names** (`ArticleLib.hashStruct`) — the

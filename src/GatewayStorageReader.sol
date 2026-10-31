@@ -15,11 +15,11 @@ import {IGatewayStorageReader} from "./interfaces/IGatewayStorageReader.sol";
 /// reads only what lives on ITS chain.
 contract GatewayStorageReader is IGatewayStorageReader {
     /// @inheritdoc IGatewayStorageReader
-    address public immutable gatewayTarget;
+    address public immutable GATEWAY_TARGET;
 
     constructor(address gatewayTarget_) {
         if (gatewayTarget_ == address(0)) revert ZeroTarget();
-        gatewayTarget = gatewayTarget_;
+        GATEWAY_TARGET = gatewayTarget_;
     }
 
     // ---------------------------------------------------------------------
@@ -28,16 +28,16 @@ contract GatewayStorageReader is IGatewayStorageReader {
 
     /// @inheritdoc IGatewayStorageReader
     function nextBatch() external view returns (uint256) {
-        return ISubmissionGateway(gatewayTarget).nextBatch();
+        return ISubmissionGateway(GATEWAY_TARGET).nextBatch();
     }
 
     /// @inheritdoc IGatewayStorageReader
     function notarizedRoot(uint256 batchIndex) external view returns (bytes32) {
-        return ISubmissionGateway(gatewayTarget).notarizedRoot(batchIndex);
+        return ISubmissionGateway(GATEWAY_TARGET).notarizedRoot(batchIndex);
     }
 
     /// @inheritdoc IGatewayStorageReader
     function gatewaySnapshot() external view returns (GatewaySnapshot memory out) {
-        out.nextBatch = ISubmissionGateway(gatewayTarget).nextBatch();
+        out.nextBatch = ISubmissionGateway(GATEWAY_TARGET).nextBatch();
     }
 }
