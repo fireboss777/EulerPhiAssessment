@@ -3,8 +3,8 @@
 Publish an article with nothing but an EIP-712 signature and a transaction.
 No platform account, no backend, no indexer you have to trust: the medium is a
 contract, the record is an append-only journal, and every batch of articles is
-frozen as a Merkle root you can verify a proof against — on the L2 where it was
-written, or notarized over CCIP to Ethereum for an audit-grade copy.
+frozen as a Merkle root you can verify a proof against on the L2 where it was
+written.
 
 The whole product is **Solidity**: contracts, deployment, keeper loops and the
 end-to-end test all run through `forge`/`cast`. There is no JS/TS/npm anywhere
@@ -23,9 +23,9 @@ end-to-end test all run through `forge`/`cast`. There is no JS/TS/npm anywhere
 git clone <this-repo> && cd <this-repo>
 forge soldeer install        # forge-std 1.17.0 + solady 0.1.26, from soldeer.lock
 forge build
-forge test                   # 58 tests, 8 suites
+forge test                   # 49 tests, 8 suites
 forge snapshot               # regenerates .gas-snapshot
-bash script/e2e-anvil.sh     # live end-to-end on anvil: submit → anchor → notarize
+bash script/e2e-anvil.sh     # live end-to-end on anvil: submit → anchor
 ```
 
 Dependencies are **Soldeer-managed only** (no git submodules, no npm):
@@ -46,29 +46,26 @@ Dependencies are **Soldeer-managed only** (no git submodules, no npm):
 ```
                      Ethereum (L1)                                Base (L2)
 ┌───────────────────────────────────────────┐   ┌─────────────────────────────────────────────┐
-│  SubmissionGateway  (plain, immutable)    │   │  ArticleAnchor  (UUPS proxy)               │
+│  SubmissionGateway  (plain, immutable)    │   │  ArticleAnchor  (UUPS proxy)                │
 │                                           │   │                                             │
 │  submitArticle(leaf, sig, payload)        │   │  submitArticle(leaf, sig, payload)          │
 │    payable · digest check only            │   │    public · EIP-712 authorship check        │
 │         │                                 │   │         │                                   │
 │         └──────── CCIP ───────────────────┼──▶│  ccipReceive  (pinned inbound lane)         │
 │                                           │   │         │                                   │
-│  receiveRoot(batchIndex, root)  ◀─────────┼───┼── notarize(i)  (payable, K = 64 blocks)     │
-│    router-gated · strictly monotonic      │   │         │                                   │
 │                                           │   │  journal[] ── anchorNextBatch() ── rootAt[] │
 └───────────────────────────────────────────┘   └─────────────────────────────────────────────┘
                                                                         │
                                        readers: verifyAgainstBatch(i, leaf, proof) → bool
-                                       keepers: script/Anchor.s.sol · script/Notarize.s.sol
+                                       keepers: script/Anchor.s.sol
 ```
 
 **One contract owns every security-relevant decision** (`ArticleAnchor`): digest
-and signature verification, the journal, root construction, batch policy and
-the K-confirmation gate. The L1 `SubmissionGateway` deliberately does *no*
+and signature verification, the journal, root construction and batch policy.
+The L1 `SubmissionGateway` deliberately does *no*
 `ecrecover` (design decision 1a): EIP-712 domains are chain-bound, so the hub
 is the single signature authority, and one authority is easier to reason about
-than two. The gateway quotes the CCIP fee, forwards bytes unchanged and
-records notarized roots in order.
+than two. The gateway quotes the CCIP fee and forwards bytes unchanged.
 
 ### Lifecycle of one article
 
@@ -86,12 +83,9 @@ records notarized roots in order.
    `MAX_BATCH(200)`. The root is computed **inside** the contract from the
    journal — the function takes no root argument, so a malicious root cannot
    exist. The range `[start, end)` freezes forever.
-5. **Anyone notarizes upward** once `block.number ≥ anchoredAtBlock + K(64)`:
-   `notarize(i)` sends `(batchIndex, root)` to the L1 gateway over CCIP, funded
-   by the caller.
-6. **Readers verify**: `verifyAgainstBatch(i, leaf, proof)` against the frozen
-   root — or against the L1 copy's `notarizedRoot(i)` for a belt-and-braces
-   audit trail.
+5. **Readers verify**: `verifyAgainstBatch(i, leaf, proof)` against the frozen
+   root — the contract derived it from the journal, so the proof checks against
+   the canonical record itself.
 
 ### Lanes and fees: **no fees — you pay gas, and gas is cents**
 
@@ -121,7 +115,7 @@ saying out loud: keepers are unpaid — see
 
 ---
 
-## Trust ladder: hub ≥ notary ≥ mirror
+## Trust ladder: hub ≥ mirror
 
 Trust decreases as you go down this ladder; each level inherits correctness
 from the one above and adds an assumption.
@@ -132,19 +126,12 @@ You trust: this code, the author's key (for their own bylines), the admin key
 by the contract from the journal, so a compromised *keeper* gains nothing — it
 can withhold a call (delay), never lie about content.
 
-**2. Notary (L1 root record) — middle.**
-`SubmissionGateway.notarizedRoot(i)` inherits the hub's correctness **plus**
-CCIP delivery **plus** `K = 64` confirmations and a strictly monotonic cursor.
-It can lag or stall; forging it requires compromising CCIP *and* reorganizing
-64 L2 blocks — and even then the L2 hub still holds the original, so the two
-copies are cross-checkable rather than one being authoritative.
-
-**3. Mirror (any republication / reader) — weakest.**
+**2. Mirror (any republication / reader) — weakest.**
 Anyone can re-host articles and hand out proofs. A mirror can *omit* you
 (censorship) and can *lie about which root is canonical*, but it cannot forge
 an inclusion proof for a leaf that was never in a batch: `verifyAgainstBatch`
-against a root you pinned yourself (from `RootAnchored` on the hub, or
-`notarizedRoot` on L1) makes a lying mirror detectable. **Pin the root, then
+against a root you pinned yourself (from `RootAnchored` on the hub) makes a
+lying mirror detectable. **Pin the root, then
 the proof is self-sufficient.**
 
 ---
@@ -162,22 +149,21 @@ production-shaped numbers, not direct-call ones.
 
 | Operation | Who pays | Gas (marginal) | Notes |
 |---|---|---:|---|
-| `submitArticle` — first leaf (cold slots) | relayer / writer | **129,349** | opens the batch window |
-| `submitArticle` — steady state | relayer / writer | **87,330** | 1h per-author rate limit applies |
-| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **126,710** | ≈98k fixed window/tree overhead |
-| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **676,720** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
-| `verifyAgainstBatch` — 10-leaf root | reader | **15,086** | an `eth_call` costs you nothing |
-| `notarize` — our side (K-gated) | keeper | **38,718** | + CCIP fee + the router's own execution |
-| gateway `submitArticle` — our side | writer | **37,125** | + L1 gas + CCIP fee (router's execution on top) |
+| `submitArticle` — first leaf (cold slots) | relayer / writer | **129,437** | opens the batch window |
+| `submitArticle` — steady state | relayer / writer | **87,418** | 1h per-author rate limit applies |
+| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **104,493** | ≈75k fixed window/tree overhead |
+| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **654,503** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
+| `verifyAgainstBatch` — 10-leaf root | reader | **15,041** | an `eth_call` costs you nothing |
+| gateway `submitArticle` — our side | writer | **37,147** | + L1 gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 13,089 B runtime, `SubmissionGateway` 5,652 B
+Contract sizes: `ArticleAnchor` 11,389 B runtime, `SubmissionGateway` 3,639 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
-rollup's L1 data component. At 87,330 gas: 0.01 gwei ≈ 0.87 µETH, 0.1 gwei ≈
+rollup's L1 data component. At 87,418 gas: 0.01 gwei ≈ 0.87 µETH, 0.1 gwei ≈
 8.7 µETH — i.e. **fractions of a cent to a few cents per article** at an ETH
 price of $3k, before the (small, calldata-based) rollup data fee. Numbers are
-examples, not promises: prices move, and the two CCIP rows above are *our*
+examples, not promises: prices move, and the CCIP row above is *our*
 side only — the router's execution and Chainlink's message fee are extra and
 must be calibrated on a real testnet.
 
@@ -190,7 +176,7 @@ affordable where per-article onchain storage would not be.
 
 ## Attack matrix ↔ tests
 
-58 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
+49 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
 
 | # | Threat | Defense | Test(s) |
 |---|---|---|---|
@@ -204,21 +190,18 @@ affordable where per-article onchain storage would not be.
 | 7 | Bypass the router to inject through `ccipReceive` (the entry itself checks nothing) | `msg.sender == router`, checked in the lane handler | `CCIP.t.sol::test_directConsumeRejected` |
 | 8 | Message from a foreign chain | `sourceChainSelector` pin | `CCIP.t.sol::test_wrongChainSelectorReverts` |
 | 9 | Message from a foreign sender on the right chain | `sender == gateway` pin | `CCIP.t.sol::test_wrongSenderReverts` |
-| 10 | Notarize a root that could still reorg | `block.number ≥ anchoredAtBlock + K(64)` | `CCIP.t.sol::test_notarizeRevertsBeforeK`, `CCIP.t.sol::test_notarizeUnanchoredBatchReverts` |
-| 11 | Push an arbitrary root into the hub | `anchorNextBatch()` takes **no root argument** — root is computed from the journal | `Batch.t.sol::test_permissionlessAnchor`, `Batch.t.sol::test_rangeFreezeAfterAppend` (root re-derived from journal, byte-identical) |
-| 12 | Alter an anchored root by appending later | range freeze on `[start, end)` | `Batch.t.sol::test_rangeFreezeAfterAppend` *(Review Focus 5)* |
-| 13 | Grief batches (early/late/empty closes) | `MIN_BATCH`/`MAX_BATCH`/`BATCH_DEADLINE`/`pending > 0` | `Batch.t.sol::test_anchorRequiresMinOrDeadline`, `Batch.t.sol::test_anchorAtMaxBatch`, `Batch.t.sol::test_emptyAnchorReverts` |
-| 14 | Forge, skip or reorder L1 notarized roots | router gate + `batchIndex == nextBatch` | `Gateway.t.sol::test_receiveRootMonotonicPrevRoot`, `Gateway.t.sol::test_receiveRootDirectCallReverts`, `Gateway.t.sol::test_receiveRootWrongSourceReverts` |
-| 14b | Deliver bytes the hub never produced (wrong length / wrong function selector) so the decoder reinterprets them as `(batchIndex, root)` | payload is `abi.encodeCall(receiveRoot, …)`; length **and** selector checked before decoding — proven by a hub-encode → gateway-decode round trip | `Gateway.t.sol::test_notarizeRoundTripIntoGateway`, `test_receiveRootRejectsWrongWireFormat` |
-| 15 | Prove a leaf that isn't in the batch (or is from another batch) | `MerkleProofLib` against the frozen root | `Batch.t.sol::test_verifyAgainstBatchFalse`, `Batch.t.sol::test_verifyAgainstBatchTrue` |
-| 16 | Merkle builder/verifier disagree (implementation bug) | differential vs hand-written `NaiveMerkle` + fuzz | `MerkleDifferential.t.sol::test_matchesNaiveReference` (256 runs), `test_oddLeafCounts`, `test_singleLeafRoot` |
-| 17 | Upgrade by anyone, or a second upgrade authority hiding beside the UUPS path | `_authorizeUpgrade` admin-only; the OZ `ERC1967Proxy` has **no admin entry at all** (ERC-1967 admin slot stays `0`); OZ `onlyProxy` blocks any attempt on the bare implementation | `Upgrade.t.sol::test_nonAdminUpgradeReverts`, `test_proxyHasNoAdminSlot`, `test_bareImplementationUpgradeReverts` |
-| 18 | Re-initialize (proxy *or* bare implementation), hijack gateway wiring, corrupt storage on upgrade | OZ `initializer` lock (bare impl `_disableInitializers()`-locked at construction) + zero-admin rejection, `setGateway` admin-only, ERC-7201 namespaced layout, append-only journal | `Upgrade.t.sol::test_initializeTwiceReverts`, `test_bareImplementationCannotBeInitialized`, `test_initializeRejectsZeroAdmin`, `test_setGatewayOnlyAdmin`, `test_journalPreservedAcrossUpgrade` |
-| 19 | Spam one author's journal | `RATE_LIMIT = 1h` | `Submit.t.sol::test_rateLimit1hReverts` |
-| 20 | Submit an expired article | `block.timestamp ≤ deadline`, checked first on both lanes | `Submit.t.sol::test_expiredDeadlineReverts` |
-| 21 | Run off with / overcharge the gateway fee | `getFee` quote, `msg.value ≥ fee`, refund excess, gateway retains 0 | `Gateway.t.sol::test_insufficientFeeReverts`, `test_excessRefunded` |
-| 22 | Bytes garbled between gateway and hub | byte-identical encode/decode round trip | `Gateway.t.sol::test_gatewayForwardsByteIdenticalCalldata`, `test_gatewayPayloadLandsInHub` |
-| 23 | Silent cost regression | smoke bounds on every marginal measurement | `Gas.t.sol::test_gasSubmit` / `test_gasAnchor` / `test_gasVerify` / `test_gasNotarize` / `test_gasGatewaySubmit` |
+| 10 | Push an arbitrary root into the hub | `anchorNextBatch()` takes **no root argument** — root is computed from the journal | `Batch.t.sol::test_permissionlessAnchor`, `Batch.t.sol::test_rangeFreezeAfterAppend` (root re-derived from journal, byte-identical) |
+| 11 | Alter an anchored root by appending later | range freeze on `[start, end)` | `Batch.t.sol::test_rangeFreezeAfterAppend` *(Review Focus 5)* |
+| 12 | Grief batches (early/late/empty closes) | `MIN_BATCH`/`MAX_BATCH`/`BATCH_DEADLINE`/`pending > 0` | `Batch.t.sol::test_anchorRequiresMinOrDeadline`, `Batch.t.sol::test_anchorAtMaxBatch`, `Batch.t.sol::test_emptyAnchorReverts` |
+| 13 | Prove a leaf that isn't in the batch (or is from another batch) | `MerkleProofLib` against the frozen root | `Batch.t.sol::test_verifyAgainstBatchFalse`, `Batch.t.sol::test_verifyAgainstBatchTrue` |
+| 14 | Merkle builder/verifier disagree (implementation bug) | differential vs hand-written `NaiveMerkle` + fuzz | `MerkleDifferential.t.sol::test_matchesNaiveReference` (256 runs), `test_oddLeafCounts`, `test_singleLeafRoot` |
+| 15 | Upgrade by anyone, or a second upgrade authority hiding beside the UUPS path | `_authorizeUpgrade` admin-only; the OZ `ERC1967Proxy` has **no admin entry at all** (ERC-1967 admin slot stays `0`); OZ `onlyProxy` blocks any attempt on the bare implementation | `Upgrade.t.sol::test_nonAdminUpgradeReverts`, `test_proxyHasNoAdminSlot`, `test_bareImplementationUpgradeReverts` |
+| 16 | Re-initialize (proxy *or* bare implementation), hijack gateway wiring, corrupt storage on upgrade | OZ `initializer` lock (bare impl `_disableInitializers()`-locked at construction) + zero-admin rejection, `setGateway` admin-only, ERC-7201 namespaced layout, append-only journal | `Upgrade.t.sol::test_initializeTwiceReverts`, `test_bareImplementationCannotBeInitialized`, `test_initializeRejectsZeroAdmin`, `test_setGatewayOnlyAdmin`, `test_journalPreservedAcrossUpgrade` |
+| 17 | Spam one author's journal | `RATE_LIMIT = 1h` | `Submit.t.sol::test_rateLimit1hReverts` |
+| 18 | Submit an expired article | `block.timestamp ≤ deadline`, checked first on both lanes | `Submit.t.sol::test_expiredDeadlineReverts` |
+| 19 | Run off with / overcharge the gateway fee | `getFee` quote, `msg.value ≥ fee`, refund excess, gateway retains 0 | `Gateway.t.sol::test_insufficientFeeReverts`, `test_excessRefunded` |
+| 20 | Bytes garbled between gateway and hub | byte-identical encode/decode round trip | `Gateway.t.sol::test_gatewayForwardsByteIdenticalCalldata`, `test_gatewayPayloadLandsInHub` |
+| 21 | Silent cost regression | smoke bounds on every marginal measurement | `Gas.t.sol::test_gasSubmit` / `test_gasAnchor` / `test_gasVerify` / `test_gasGatewaySubmit` |
 
 Struct-hash pinning (`ArticleLib.t.sol::test_hashStructIsPinned`) uses vectors
 computed with `cast` — an *independent tool*, not the contract's own code — so
@@ -230,16 +213,15 @@ every submission** — the two `submitArticle` rows above are post-refactor.
 
 **Review Focus items** (the five questions the spec singled out) map to:
 forged authorship → #1; cross-lane replay → #5; non-whitelisted CCIP source →
-#7/#8/#9; notary reorg exposure → #10; post-anchor append → #12.
+#7/#8/#9; post-anchor append → #11.
 
 ### End-to-end (live node, not mocks)
 
 `script/e2e-anvil.sh` boots anvil, deploys `MockRouter` → `ArticleAnchor`
 (UUPS), signs and submits a real EIP-712 article, warps past the batch
-deadline, anchors, mines past `K`, notarizes, and asserts the fee and
-destination the router received. It is the acceptance check for the keeper
-scripts (`Anchor.s.sol`, `Notarize.s.sol`) — they are permissionless and
-assume nothing the contract does not enforce.
+deadline, anchors and asserts the frozen root. It is the acceptance check for
+the keeper script (`Anchor.s.sol`) — permissionless and assuming nothing the
+contract does not enforce.
 
 ---
 
@@ -292,7 +274,7 @@ and why `NaiveMerkle` stays assembly-free and separately written.
 **Mapping vs Merkle journal.** `mapping(bytes32 => bool) published` would be
 the cheapest possible "is this article known" (one SSTORE, O(1)), but it buys
 nothing anyone else can use: no inclusion proof for readers, no composable
-batch root, no notarizable artifact for L1. The Merkle route costs a fixed
+batch root, no provable artifact for a third party. The Merkle route costs a fixed
 ≈98k per batch plus ≈2.9k per leaf — call it **~3k gas per article to make
 every article provable to a third party** (the batch's fixed overhead is paid
 once, amortized over up to 200 articles) — and returns proofs that survive
@@ -301,33 +283,33 @@ product the proof is the point, so the journal wins. The rate limit, `uuid`
 dedup and batch window live in mappings precisely because those are
 *bookkeeping*, not *claims*.
 
-**ERC-7201 namespaced storage.** Neither contract declares a state variable:
-each one's whole layout is a `Storage` struct on its interface, addressed at
+**ERC-7201 namespaced storage.** The hub declares no state variable: its whole
+layout is a `Storage` struct on its interface, addressed at
 `keccak256(abi.encode(uint256(keccak256("eulerphi.storage.ArticleAnchor")) - 1)) & ~bytes32(uint256(0xff))`
 and reached through a single `ArticleLib.getStorage()` pointer whose slot
-constant sits beside it (`ArticleLib.STORAGE_SLOT`, and `GatewayLib` holds the
-other namespace's pair): one pointer and one literal per namespace, living in a
-library instead of a `virtual`/`override` pair spread over two contracts
+constant sits beside it (`ArticleLib.STORAGE_SLOT`): one pointer and one
+literal, living in a library instead of a `virtual`/`override` pair spread over
+two contracts
 (assembly takes only number constants, hence the local copy inside the
 pointer). `test_storageLivesAtErc7201Slot` recomputes the formula from the
-namespace id, compares it against those constants and reads the raw slots —
+namespace id, compares it against that constant and reads the raw slots —
 constant, id and contents must all agree. Payoffs: a future
 base contract or a field reordering cannot collide with this layout, because a
 namespace owns its own region of the slot space; the layout is auditable as one
 commented block instead of being implied by declaration order across the file;
 and `admin`/`router`/`ethChainSelector`/`gateway` keep exactly the packing the
 linear layout gave them (`router` + `ethChainSelector` share word 1, which is
-what `notarize` reads together — the first migration attempt split them and
-paid +2,100 gas per notarization until the storage layout caught it). This is
+what `ccipReceive` reads together — the first migration attempt split them and
+paid +2,100 gas per delivery until the storage layout caught it). This is
 breaking for a proxy deployed at the old linear slots; no such deployment
 exists, and there is deliberately no dual-read migration.
 The namespace state is readable on chain only THROUGH the contract that owns
 it: the EVM has no opcode for reading another account's storage, so every getter
 is an `sload` inside the owner, living in a getter contract the owner inherits —
-`ArticleAnchorGetters` inside `ArticleAnchor`, `SubmissionGatewayGetters`
-inside `SubmissionGateway`, each behind its own interface
-(`IArticleAnchorGetters`, `ISubmissionGatewayGetters`): declared once,
-implemented once, inherited by exactly one contract. There is deliberately NO
+`ArticleAnchorGetters` inside `ArticleAnchor`, behind its own interface
+(`IArticleAnchorGetters`): declared once, implemented once, inherited by
+exactly one contract. The gateway holds no state at all, so it has no getters
+to inherit. There is deliberately NO
 wrapper contract around them — a facade could only `staticcall` the owner back,
 adding a second copy of every function (plus a second chain to deploy on) to
 read the same words. Reading ANOTHER account's raw slots is an off-chain
@@ -446,23 +428,22 @@ EIP-712 typed digest — both are checked, so a payload cannot be reinterpreted.
 
 ### Unpaid-keeper liveness
 
-`anchorNextBatch` and `notarize` are permissionless but **incentive-free**, and
-the protocol has no treasury to pay from (that is what "no fees" means).
-Consequence: if nobody runs the keepers, writes are unaffected — articles keep
-journaling — but batches do not freeze and the L1 record lags. The scripts are
-one command each and cost ≈124k gas (anchor) and ≈36k gas + one CCIP fee
-(notarize); any author, reader or competitor can run them, which is the point
+`anchorNextBatch` is permissionless but **incentive-free**, and the protocol
+has no treasury to pay from (that is what "no fees" means). Consequence: if
+nobody runs the keeper, writes are unaffected — articles keep journaling — but
+batches do not freeze. The script is one command and costs ≈104k gas; any
+author, reader or competitor can run it, which is the point
 of permissionlessness. What it does not buy is *guaranteed* cadence. A future
 bounty or an operator cron is the honest fix; the current design optimizes for
 "nobody can be corrupted by a role that doesn't exist" over "fixed schedule".
 
 ### CCIP assumptions
 
-Chainlink CCIP is trusted for liveness of both lanes and, for the notary
-record, for authenticity. Message fees are Chainlink's; the receiver gas limits
-(`NOTARY_GAS_LIMIT = 200k`, `SUBMIT_GAS_LIMIT = 400k`) are set to the upstream
-default and generous headroom respectively, and must be calibrated on a real
-testnet before a real lane. The vendored interfaces are a **minimal subset**, taken from
+Chainlink CCIP is trusted for liveness of the single lane (gateway → hub);
+integrity on that lane is the hub's own business — every payload is re-verified
+at the destination. Message fees are Chainlink's; the gas limit
+(`SUBMIT_GAS_LIMIT = 400k`) carries generous headroom and must be calibrated on
+a real testnet before a real lane. The vendored interfaces are a **minimal subset**, taken from
 `smartcontractkit/ccip` at commit `171f9f0` (the `ccip-develop` head at
 vendoring time; struct layouts and signatures re-checked against that
 commit) — re-verify them against current upstream when you deploy.
@@ -503,13 +484,7 @@ cast send $HUB "setGateway(address)" $GATEWAY --private-key $ADMIN_KEY --rpc-url
 
 # Keepers (permissionless — anyone can run)
 HUB_ADDRESS=$HUB forge script script/Anchor.s.sol    --rpc-url $BASE_RPC --broadcast
-HUB_ADDRESS=$HUB NOTARY_BATCH_START=0 NOTARY_FEE_WEI=<exact getFee quote> \
-  forge script script/Notarize.s.sol --rpc-url $BASE_RPC --broadcast
 ```
-
-Send the **exact** fee quote to `notarize` — the upstream router keeps any
-overpayment (the gateway refunds excess on its own lane; the hub does not
-need to).
 
 ---
 
@@ -517,24 +492,21 @@ need to).
 
 ```
 src/
-  ArticleAnchor.sol        hub: submit, journal, batching, roots, CCIP both ways, UUPS
-  SubmissionGateway.sol    L1: payable entry lane (no ecrecover) + monotonic notary receiver
-  ArticleAnchorGetters.sol the hub's 14 read getters, implemented once (abstract)
-  SubmissionGatewayGetters.sol
-                           the gateway's 2 read getters, same shape
+  ArticleAnchor.sol        hub: submit, journal, batching, roots, CCIP inbound, UUPS
+  SubmissionGateway.sol    L1: payable entry lane (no ecrecover), stateless sender
+  ArticleAnchorGetters.sol the hub's 13 read getters, implemented once (abstract)
   libraries/
     ArticleLib.sol         EIP-712 typehash + `hashStruct`, the hub's ERC-7201 slot +
                            namespace pointer (`getStorage()`), and every hub
                            policy constant as `public`: MIN_BATCH, MAX_BATCH,
-                           BATCH_DEADLINE, RATE_LIMIT, HIGH_S_MAX, NOTARY_K,
-                           NOTARY_GAS_LIMIT — the contract holds none of them
-    GatewayLib.sol         the gateway's ERC-7201 slot + pointer and its
-                           `public SUBMIT_GAS_LIMIT`; contracts hold none
+                           BATCH_DEADLINE, RATE_LIMIT, HIGH_S_MAX — the
+                           contract holds none of them
+    GatewayLib.sol         `public SUBMIT_GAS_LIMIT`; the contract holds none
   interfaces/
     IArticleAnchor.sol     hub's own public ABI, laid out in style-guide order
                            (type declarations, then events, then errors, then
-                           functions: actions first, `view` last) + all 15
-                           custom errors + every API NatSpec; the 14 read
+                           functions: actions first, `view` last) + all 13
+                           custom errors + every API NatSpec; the 13 read
                            getters are NOT here — they live in
                            `IArticleAnchorGetters` — and ArticleAnchor inherits
                            both, so the compiler keeps docs and ABI in
@@ -546,22 +518,17 @@ src/
                            error declared here, never a revert string: each
                            guard is written `require(condition, Err())`
     IArticleAnchorGetters.sol
-                           the hub's 14 read getters — declared in ONE place,
+                           the hub's 13 read getters — declared in ONE place,
                            implemented in ONE contract (`ArticleAnchorGetters`),
                            an `sload` in the account that owns the namespace.
                            No wrapper copies them anywhere
-    ISubmissionGateway.sol same for SubmissionGateway (10 typed errors + its
-                           ERC-7201 `Storage` struct; it also fixes the 68-byte
-                           `receiveRoot` wire format the hub encodes against)
-    ISubmissionGatewayGetters.sol
-                           the gateway's 2 state reads (`nextBatch`,
-                           `notarizedRoot`) — declared once, implemented once in
-                           `SubmissionGatewayGetters`
+    ISubmissionGateway.sol same for SubmissionGateway (4 typed errors); the
+                           contract holds no storage, only three immutables
     Client.sol, IRouterClient.sol, IAny2EVMMessageReceiver.sol
                            vendored CCIP subset @ commit 171f9f0
 script/
   DeployHub.s.sol DeployGateway.s.sol     deployment (single upgrade path)
-  Anchor.s.sol Notarize.s.sol             permissionless keeper loops
+  Anchor.s.sol                            permissionless keeper loop
   E2ESubmit.s.sol                         signs + submits against the live domain
   e2e-anvil.sh                            live end-to-end driver
 test/
@@ -638,7 +605,7 @@ be inconsistent"*.
 - **Not audited.** Treat as assessment code until a review says otherwise.
 - **Admin key is irrecoverable if lost, un-rotatable if stolen** — deploy with
   a multisig, plan the renounce upgrade (see above).
-- **No keeper incentive** → no guaranteed batch/notarization cadence.
+- **No keeper incentive** → no guaranteed batch cadence.
 - **No frontend, no indexer, no IPFS pinning** — by the 100%-Solidity rule.
 - **No roles, no fees, no ZK** in v1 — extension points documented above.
 - **CCIP fees, receiver gas limits and chain selectors must be re-verified**
