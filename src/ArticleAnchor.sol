@@ -54,8 +54,7 @@ contract ArticleAnchor is IArticleAnchor, HubGetters, Initializable, EIP712, UUP
     bytes32 private constant _STORAGE_SLOT = 0x15dbd2ada1700fe5c9739ea67ae301bf73151c332fba02dda344d3dd844a0300;
 
     modifier onlyAdmin() {
-        Storage storage $ = _getStorage();
-        require(msg.sender == $.admin, AdminOnly());
+        _checkAdmin();
         _;
     }
 
@@ -241,5 +240,14 @@ contract ArticleAnchor is IArticleAnchor, HubGetters, Initializable, EIP712, UUP
         assembly {
             $.slot := _STORAGE_SLOT
         }
+    }
+
+    /// @dev The gate itself, pulled out of `onlyAdmin`: a modifier body is
+    /// inlined at every use site, so one shared copy is smaller than two
+    /// (`forge lint: unwrapped-modifier-logic`) — same storage read, same
+    /// `AdminOnly()` revert, verified by the admin tests in `Upgrade.t.sol`.
+    function _checkAdmin() private view {
+        Storage storage $ = _getStorage();
+        require(msg.sender == $.admin, AdminOnly());
     }
 }

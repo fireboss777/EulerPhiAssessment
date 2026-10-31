@@ -162,20 +162,20 @@ production-shaped numbers, not direct-call ones.
 
 | Operation | Who pays | Gas (marginal) | Notes |
 |---|---|---:|---|
-| `submitArticle` — first leaf (cold slots) | relayer / writer | **130,169** | opens the batch window |
-| `submitArticle` — steady state | relayer / writer | **88,150** | 1h per-author rate limit applies |
+| `submitArticle` — first leaf (cold slots) | relayer / writer | **129,332** | opens the batch window |
+| `submitArticle` — steady state | relayer / writer | **87,313** | 1h per-author rate limit applies |
 | `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **126,654** | ≈98k fixed window/tree overhead |
 | `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **676,664** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
 | `verifyAgainstBatch` — 10-leaf root | reader | **15,075** | an `eth_call` costs you nothing |
 | `notarize` — our side (K-gated) | keeper | **38,680** | + CCIP fee + the router's own execution |
 | gateway `submitArticle` — our side | writer | **37,170** | + L1 gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 13,782 B runtime, `SubmissionGateway` 5,705 B, `HubStorageReader` 5,681 B, `GatewayStorageReader` 1,280 B
+Contract sizes: `ArticleAnchor` 13,533 B runtime, `SubmissionGateway` 5,705 B, `HubStorageReader` 5,681 B, `GatewayStorageReader` 1,280 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
-rollup's L1 data component. At 88,150 gas: 0.01 gwei ≈ 0.88 µETH, 0.1 gwei ≈
-8.8 µETH — i.e. **fractions of a cent to a few cents per article** at an ETH
+rollup's L1 data component. At 87,313 gas: 0.01 gwei ≈ 0.87 µETH, 0.1 gwei ≈
+8.7 µETH — i.e. **fractions of a cent to a few cents per article** at an ETH
 price of $3k, before the (small, calldata-based) rollup data fee. Numbers are
 examples, not promises: prices move, and the two CCIP rows above are *our*
 side only — the router's execution and Chainlink's message fee are extra and
@@ -222,7 +222,11 @@ affordable where per-article onchain storage would not be.
 
 Struct-hash pinning (`ArticleLib.t.sol::test_hashStructIsPinned`) uses vectors
 computed with `cast` — an *independent tool*, not the contract's own code — so
-an accidental typehash or field-order change cannot pass review quietly.
+an accidental typehash or field-order change cannot pass review quietly. Those
+vectors are also what made `ArticleLib.hashStruct` safe to rewrite as hand-rolled
+assembly (Solady's pattern, `forge lint: asm-keccak256`): seven contiguous words
+instead of `keccak256(abi.encode(...))`, byte-identical output, **−837 gas on
+every submission** — the two `submitArticle` rows above are post-refactor.
 
 **Review Focus items** (the five questions the spec singled out) map to:
 forged authorship → #1; cross-lane replay → #5; non-whitelisted CCIP source →
@@ -571,7 +575,11 @@ guide](https://docs.soliditylang.org/en/v0.8.38/style-guide.html). The work is
 split in two: `forge fmt` owns whitespace, indentation and line wrapping (hard
 gate: `forge fmt --check`), and the style guide itself owns the ordering rules a
 formatter cannot express — those are held by review against the guide, which is
-the single reference.
+the single reference. The formatter's own knobs live in `foundry.toml`
+(`[profile.default.fmt]`): `line_length = 120`, `bracket_spacing` (spaces
+inside `{ … }`), `sort_imports`, `wrap_comments`, `number_underscore =
+"thousands"` — so imports arrive sorted, comments reflow to the same width as
+code, and big decimals read `1_700_000_000`.
 
 | Rule | Where you see it |
 |---|---|
