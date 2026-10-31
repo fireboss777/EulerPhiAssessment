@@ -23,7 +23,7 @@ end-to-end test all run through `forge`/`cast`. There is no JS/TS/npm anywhere
 git clone <this-repo> && cd <this-repo>
 forge soldeer install        # forge-std 1.17.0 + solady 0.1.26, from soldeer.lock
 forge build
-forge test                   # 57 tests, 8 suites
+forge test                   # 63 tests, 9 suites
 forge snapshot               # regenerates .gas-snapshot
 bash script/e2e-anvil.sh     # live end-to-end on anvil: submit → anchor → notarize
 ```
@@ -170,7 +170,7 @@ production-shaped numbers, not direct-call ones.
 | `notarize` — our side (K-gated) | keeper | **38,680** | + CCIP fee + the router's own execution |
 | gateway `submitArticle` — our side | writer | **37,148** | + L1 gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 13,782 B runtime, `SubmissionGateway` 5,705 B
+Contract sizes: `ArticleAnchor` 13,782 B runtime, `SubmissionGateway` 5,705 B, `StorageReader` 6,435 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
@@ -190,7 +190,7 @@ affordable where per-article onchain storage would not be.
 
 ## Attack matrix ↔ tests
 
-57 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
+63 tests in 9 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
 
 | # | Threat | Defense | Test(s) |
 |---|---|---|---|
@@ -313,6 +313,14 @@ what `notarize` reads together — the first migration attempt split them and
 paid +2,100 gas per notarization until the storage layout caught it). This is
 breaking for a proxy deployed at the old linear slots; no such deployment
 exists, and there is deliberately no dual-read migration.
+The namespace state is readable on chain only THROUGH a contract that owns it:
+the EVM has no opcode for reading another account's storage, so
+`StorageReader` (bound at deployment) is a typed `staticcall` facade over both
+targets' own getters, plus a scalar-only `Snapshot` per namespace — a struct
+holding mappings cannot be returned at all (solc 4103). Reading raw slots from
+outside is an off-chain capability (`cast`, `eth_getStorageAt`, `vm.load`), and
+the project's own tooling uses it: `test_storageLivesAtErc7201Slot` and
+`test_proxyHasNoAdminSlot` both read foreign slots with `vm.load`.
 
 **Roles / allowlist publishing — deliberately not implemented.** The spec
 scoped role-based publishing to a comment + README extension point. The code
@@ -499,6 +507,7 @@ src/
   ArticleAnchor.sol        hub: submit, journal, batching, roots, CCIP both ways, UUPS
   SubmissionGateway.sol    L1: payable entry lane (no ecrecover) + monotonic notary receiver
   ArticleLib.sol           EIP-712 struct + typehash
+  StorageReader.sol        read-only facade over both namespaces (see below)
   interfaces/
     IArticleAnchor.sol     hub's full public ABI, laid out in style-guide order
                            (events, then errors, then functions: actions first,
@@ -513,6 +522,10 @@ src/
     ISubmissionGateway.sol same for SubmissionGateway (10 typed errors + its
                            ERC-7201 `Storage` struct; it also fixes the 68-byte
                            `receiveRoot` wire format the hub encodes against)
+    IStorageReader.sol     facade API: 2 bound targets + 14 hub getters
+                           (9 scalars, 5 indexed) + 2 gateway getters +
+                           `HubSnapshot` / `GatewaySnapshot`, and why a
+                           `Storage` struct cannot be returned
     Client.sol, IRouterClient.sol, IAny2EVMMessageReceiver.sol
                            vendored CCIP subset @ commit 171f9f0
 script/
@@ -523,7 +536,7 @@ script/
   style-audit.py                          style-guide order checks (see Code style)
 test/
   ArticleLib.t.sol Submit.t.sol Batch.t.sol MerkleDifferential.t.sol
-  CCIP.t.sol Gateway.t.sol Upgrade.t.sol Gas.t.sol
+  CCIP.t.sol Gateway.t.sol Upgrade.t.sol Gas.t.sol StorageReader.t.sol
   lib/NaiveMerkle.sol   independent reference Merkle (differential)
   mocks/                MockRouter, ArticleAnchorV2Stub, AuthorGate
 .gas-snapshot            forge snapshot output (regenerate with `forge snapshot`)
