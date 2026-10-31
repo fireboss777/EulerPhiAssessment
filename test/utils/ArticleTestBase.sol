@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {Test} from "forge-std/Test.sol";
-import {ECDSA} from "solady/utils/ECDSA.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {ArticleAnchor} from "../../src/ArticleAnchor.sol";
-import {ArticleSubmission} from "../../src/ArticleLib.sol";
+import { ArticleAnchor } from "../../src/ArticleAnchor.sol";
+import { ArticleSubmission } from "../../src/ArticleLib.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import { Test } from "forge-std/Test.sol";
+import { ECDSA } from "solady/utils/ECDSA.sol";
 
 interface IEIP5267 {
     function eip712Domain()
@@ -26,7 +26,7 @@ abstract contract ArticleTestBase is Test {
 
     /// @dev Refundable-ETH sink: this test contract plays the user role in
     /// gateway tests, so it must accept ETH like an EOA would.
-    receive() external payable {}
+    receive() external payable { }
 
     /// @dev Foundry's genesis timestamp is 1 — real networks start far later,
     /// and the per-author rate limit assumes a sane clock. Give suites a

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {IArticleAnchor} from "./interfaces/IArticleAnchor.sol";
-import {IHubGetters} from "./interfaces/IHubGetters.sol";
-import {IHubStorageReader} from "./interfaces/IHubStorageReader.sol";
+import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
+import { IHubGetters } from "./interfaces/IHubGetters.sol";
+import { IHubStorageReader } from "./interfaces/IHubStorageReader.sol";
 
 /// @title HubStorageReader — read-only facade over the hub's ERC-7201 namespace.
 /// @notice See `IHubStorageReader` for the API, for why it exists (a `Storage`

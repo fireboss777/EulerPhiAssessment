@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {Test} from "forge-std/Test.sol";
-import {ArticleLib, ArticleSubmission} from "../src/ArticleLib.sol";
-import {AuthorGate} from "./mocks/AuthorGate.sol";
-import {ECDSA} from "solady/utils/ECDSA.sol";
+import { ArticleLib, ArticleSubmission } from "../src/ArticleLib.sol";
+import { AuthorGate } from "./mocks/AuthorGate.sol";
+import { Test } from "forge-std/Test.sol";
+import { ECDSA } from "solady/utils/ECDSA.sol";
 
 contract ArticleLibTest is Test {
     /// @dev Independent pins from `cast keccak` + `cast abi-encode` (see Task 1 brief).
@@ -48,8 +48,8 @@ contract ArticleLibTest is Test {
             bodyHash: bytes32(uint256(2)),
             cidHash: bytes32(uint256(3)),
             uuid: bytes32(uint256(4)),
-            timestamp: 1700000000,
-            deadline: 1700003600
+            timestamp: 1_700_000_000,
+            deadline: 1_700_003_600
         });
     }
 }

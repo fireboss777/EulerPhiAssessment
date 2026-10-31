@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {Script} from "forge-std/Script.sol";
-import {console} from "forge-std/console.sol";
-import {ArticleAnchor} from "../src/ArticleAnchor.sol";
+import { ArticleAnchor } from "../src/ArticleAnchor.sol";
+import { Script } from "forge-std/Script.sol";
+import { console } from "forge-std/console.sol";
 
 /// @notice Keeper: closes the hub's open batch when eligible. Permissionless
 /// by design — this script assumes nothing the contract doesn't enforce; if

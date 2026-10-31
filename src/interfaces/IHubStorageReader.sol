@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {IHubGetters} from "./IHubGetters.sol";
+import { IHubGetters } from "./IHubGetters.sol";
 
 /// @title IHubStorageReader — read-only facade over the hub's ERC-7201 namespace.
 /// @notice Why it exists: the hub's `Storage` struct CANNOT be returned from an

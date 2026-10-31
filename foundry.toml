@@ -9,4 +9,11 @@ forge-std = { version = "1.17.0", git = "https://github.com/foundry-rs/forge-std
 openzeppelin-contracts-upgradeable = { version = "5.7.0", git = "https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable", tag = "v5.7.0" }
 openzeppelin-contracts = { version = "5.7.0", git = "https://github.com/OpenZeppelin/openzeppelin-contracts", tag = "v5.7.0" }
 
+[profile.default.fmt]
+line_length = 120
+bracket_spacing = true
+wrap_comments = true
+number_underscore = "thousands"
+sort_imports = true
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

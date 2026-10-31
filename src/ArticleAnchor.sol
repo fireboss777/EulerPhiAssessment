@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {EIP712} from "solady/utils/EIP712.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {MerkleProofLib} from "solady/utils/MerkleProofLib.sol";
-import {MerkleTreeLib} from "solady/utils/MerkleTreeLib.sol";
-import {ECDSA} from "solady/utils/ECDSA.sol";
-import {ArticleLib, ArticleSubmission} from "./ArticleLib.sol";
-import {Client} from "./interfaces/Client.sol";
-import {IRouterClient} from "./interfaces/IRouterClient.sol";
-import {ISubmissionGateway} from "./interfaces/ISubmissionGateway.sol";
-import {IArticleAnchor} from "./interfaces/IArticleAnchor.sol";
-import {HubGetters} from "./HubGetters.sol";
+import { ArticleLib, ArticleSubmission } from "./ArticleLib.sol";
+import { HubGetters } from "./HubGetters.sol";
+import { Client } from "./interfaces/Client.sol";
+import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
+import { IRouterClient } from "./interfaces/IRouterClient.sol";
+import { ISubmissionGateway } from "./interfaces/ISubmissionGateway.sol";
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import { ECDSA } from "solady/utils/ECDSA.sol";
+import { EIP712 } from "solady/utils/EIP712.sol";
+import { MerkleProofLib } from "solady/utils/MerkleProofLib.sol";
+import { MerkleTreeLib } from "solady/utils/MerkleTreeLib.sol";
 
 /// @title ArticleAnchor — the canonical journal & batch root registry (hub).
 /// @notice Every external entry point, getter, constant and event is declared
@@ -119,7 +119,7 @@ contract ArticleAnchor is IArticleAnchor, HubGetters, Initializable, EIP712, UUP
             feeToken: address(0),
             extraArgs: Client._argsToBytesV1(NOTARY_GAS_LIMIT)
         });
-        bytes32 messageId = IRouterClient($.router).ccipSend{value: msg.value}($.ethChainSelector, m);
+        bytes32 messageId = IRouterClient($.router).ccipSend{ value: msg.value }($.ethChainSelector, m);
         emit Notarized(batchIndex, $.rootAt[batchIndex], messageId);
     }
 
@@ -211,7 +211,7 @@ contract ArticleAnchor is IArticleAnchor, HubGetters, Initializable, EIP712, UUP
     /// @dev The guard IS the `onlyAdmin` modifier, hence the empty body: OZ
     /// invokes this hook from `upgradeToAndCall` before writing the ERC-1967
     /// implementation slot, and `msg.sender` survives the delegatecall hop.
-    function _authorizeUpgrade(address) internal view override onlyAdmin {}
+    function _authorizeUpgrade(address) internal view override onlyAdmin { }
 
     /// @dev Contract-side tree build over `journal[start..end)` in Solady's
     /// heap layout (pair-sorted keccak; leaf k sits at 2L-2-k, node i hashes

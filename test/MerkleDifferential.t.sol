@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {Test} from "forge-std/Test.sol";
-import {MerkleTreeLib} from "solady/utils/MerkleTreeLib.sol";
-import {MerkleProofLib} from "solady/utils/MerkleProofLib.sol";
-import {NaiveMerkle} from "./lib/NaiveMerkle.sol";
+import { NaiveMerkle } from "./lib/NaiveMerkle.sol";
+import { Test } from "forge-std/Test.sol";
+import { MerkleProofLib } from "solady/utils/MerkleProofLib.sol";
+import { MerkleTreeLib } from "solady/utils/MerkleTreeLib.sol";
 
 /// @notice Differential harness: Solady's optimized builder/verifier against
 /// an independent naive implementation (see test/lib/NaiveMerkle.sol).

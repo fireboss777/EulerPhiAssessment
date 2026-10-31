@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {IArticleAnchor} from "../src/interfaces/IArticleAnchor.sol";
-import {ArticleAnchor} from "../src/ArticleAnchor.sol";
-import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
-import {ArticleAnchorV2Stub} from "./mocks/ArticleAnchorV2Stub.sol";
-import {SubmissionGateway} from "../src/SubmissionGateway.sol";
+import { ArticleAnchor } from "../src/ArticleAnchor.sol";
+import { SubmissionGateway } from "../src/SubmissionGateway.sol";
+import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
+import { ArticleAnchorV2Stub } from "./mocks/ArticleAnchorV2Stub.sol";
+import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 contract UpgradeTest is ArticleTestBase {
     function test_nonAdminUpgradeReverts() public {

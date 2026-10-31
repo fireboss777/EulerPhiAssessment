@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {ArticleAnchor} from "../src/ArticleAnchor.sol";
-import {ArticleSubmission} from "../src/ArticleLib.sol";
-import {Client} from "../src/interfaces/Client.sol";
-import {ISubmissionGateway} from "../src/interfaces/ISubmissionGateway.sol";
-import {SubmissionGateway} from "../src/SubmissionGateway.sol";
-import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
-import {MockRouter} from "./mocks/MockRouter.sol";
+import { ArticleAnchor } from "../src/ArticleAnchor.sol";
+import { ArticleSubmission } from "../src/ArticleLib.sol";
+import { SubmissionGateway } from "../src/SubmissionGateway.sol";
+import { Client } from "../src/interfaces/Client.sol";
+import { ISubmissionGateway } from "../src/interfaces/ISubmissionGateway.sol";
+import { MockRouter } from "./mocks/MockRouter.sol";
+import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 
 contract GatewayTest is ArticleTestBase {
-    uint64 internal constant BASE_SEL = 999999;
+    uint64 internal constant BASE_SEL = 999_999;
     address internal constant HUB = address(0x4B1);
     address internal constant FOREIGN = address(0xF0E1);
     uint256 internal constant AUTHOR_KEY = 0xD00D;
@@ -33,7 +33,7 @@ contract GatewayTest is ArticleTestBase {
         bytes32 leaf = _leafOf(p);
         vm.deal(address(this), 1 ether);
 
-        gw.submitArticle{value: 0.05 ether}(leaf, sig, p);
+        gw.submitArticle{ value: 0.05 ether }(leaf, sig, p);
 
         assertEq(mock.lastDest(), BASE_SEL, "destination chain");
         assertEq(mock.lastReceiver(), HUB, "receiver = hub");
@@ -52,7 +52,7 @@ contract GatewayTest is ArticleTestBase {
         bytes32 wrongLeaf = bytes32(uint256(_leafOf(p)) ^ 1);
 
         vm.expectRevert(ISubmissionGateway.DigestMismatch.selector);
-        gw.submitArticle{value: 0}(wrongLeaf, sig, p);
+        gw.submitArticle{ value: 0 }(wrongLeaf, sig, p);
     }
 
     function test_insufficientFeeReverts() public {
@@ -60,14 +60,14 @@ contract GatewayTest is ArticleTestBase {
         vm.deal(address(this), 1 ether);
 
         vm.expectRevert(ISubmissionGateway.InsufficientFee.selector);
-        gw.submitArticle{value: 0.005 ether}(_leafOf(p), sig, p); // fee is 0.01
+        gw.submitArticle{ value: 0.005 ether }(_leafOf(p), sig, p); // fee is 0.01
     }
 
     function test_excessRefunded() public {
         (ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
         vm.deal(address(this), 1 ether);
 
-        gw.submitArticle{value: 0.03 ether}(_leafOf(p), sig, p);
+        gw.submitArticle{ value: 0.03 ether }(_leafOf(p), sig, p);
 
         assertEq(address(gw).balance, 0, "gateway retains nothing");
         assertEq(mock.lastValue(), mock.fee(), "router got the fee, not the excess");
@@ -131,7 +131,7 @@ contract GatewayTest is ArticleTestBase {
         bytes memory sig = _signArticle(hub, p, key);
         vm.deal(address(this), 1 ether);
 
-        gw.submitArticle{value: 0.05 ether}(leaf, sig, p);
+        gw.submitArticle{ value: 0.05 ether }(leaf, sig, p);
 
         // Relay the captured payload as if CCIP delivered it.
         Client.Any2EVMMessage memory delivered = Client.Any2EVMMessage({
@@ -162,7 +162,7 @@ contract GatewayTest is ArticleTestBase {
         vm.roll(hub.anchoredAtBlock(0) + hub.NOTARY_K());
         vm.deal(address(this), 1 ether);
 
-        hub.notarize{value: mock.fee()}(0); // hub-side encode (encodeCall)
+        hub.notarize{ value: mock.fee() }(0); // hub-side encode (encodeCall)
 
         Client.Any2EVMMessage memory delivered = Client.Any2EVMMessage({
             messageId: mock.lastMessageId(),

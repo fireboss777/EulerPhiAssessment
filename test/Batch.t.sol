@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {MerkleTreeLib} from "solady/utils/MerkleTreeLib.sol";
-import {IArticleAnchor} from "../src/interfaces/IArticleAnchor.sol";
-import {ArticleAnchor} from "../src/ArticleAnchor.sol";
-import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
+import { ArticleAnchor } from "../src/ArticleAnchor.sol";
+import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
+import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
+import { MerkleTreeLib } from "solady/utils/MerkleTreeLib.sol";
 
 contract BatchTest is ArticleTestBase {
     function test_anchorRequiresMinOrDeadline() public {

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {Script} from "forge-std/Script.sol";
-import {console} from "forge-std/console.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {ArticleAnchor} from "../src/ArticleAnchor.sol";
+import { ArticleAnchor } from "../src/ArticleAnchor.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import { Script } from "forge-std/Script.sol";
+import { console } from "forge-std/console.sol";
 
 /// @notice Deploys ArticleAnchor behind OpenZeppelin's ERC1967 proxy — which
 /// has NO admin entry of its own (the ERC-1967 admin slot stays empty), so the

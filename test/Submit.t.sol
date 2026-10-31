@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {IArticleAnchor} from "../src/interfaces/IArticleAnchor.sol";
-import {ArticleAnchor} from "../src/ArticleAnchor.sol";
-import {ArticleSubmission} from "../src/ArticleLib.sol";
-import {ECDSA} from "solady/utils/ECDSA.sol";
-import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
+import { ArticleAnchor } from "../src/ArticleAnchor.sol";
+import { ArticleSubmission } from "../src/ArticleLib.sol";
+import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
+import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
+import { ECDSA } from "solady/utils/ECDSA.sol";
 
 contract SubmitTest is ArticleTestBase {
     uint256 internal constant AUTHOR_KEY = 0xB0B;

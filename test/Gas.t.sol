@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {console} from "forge-std/console.sol";
-import {MerkleTreeLib} from "solady/utils/MerkleTreeLib.sol";
-import {ArticleAnchor} from "../src/ArticleAnchor.sol";
-import {ArticleSubmission} from "../src/ArticleLib.sol";
-import {SubmissionGateway} from "../src/SubmissionGateway.sol";
-import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
-import {MockRouter} from "./mocks/MockRouter.sol";
+import { ArticleAnchor } from "../src/ArticleAnchor.sol";
+import { ArticleSubmission } from "../src/ArticleLib.sol";
+import { SubmissionGateway } from "../src/SubmissionGateway.sol";
+import { MockRouter } from "./mocks/MockRouter.sol";
+import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
+import { console } from "forge-std/console.sol";
+import { MerkleTreeLib } from "solady/utils/MerkleTreeLib.sol";
 
 /// @notice Marginal-cost meter: the numbers quoted in README's cost table.
 /// Each figure is a `gasleft()` delta around ONE call taken from a COLD
@@ -78,7 +78,7 @@ contract GasTest is ArticleTestBase {
         vm.cool(address(mock));
 
         uint256 g0 = gasleft();
-        hub.notarize{value: mock.fee()}(0);
+        hub.notarize{ value: mock.fee() }(0);
         uint256 used = g0 - gasleft();
 
         console.log("notarize (incl. ccipSend) ", used);
@@ -95,7 +95,7 @@ contract GasTest is ArticleTestBase {
         ArticleSubmission memory p = _payloadFor(vm.addr(KEY), 3);
         bytes memory sig = _signArticle(hub, p, KEY);
         uint256 g0 = gasleft();
-        gw.submitArticle{value: mock.fee()}(_leafOf(p), sig, p);
+        gw.submitArticle{ value: mock.fee() }(_leafOf(p), sig, p);
         uint256 used = g0 - gasleft();
 
         console.log("gateway submit (incl fee) ", used);

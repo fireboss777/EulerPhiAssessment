@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {IArticleAnchor} from "../src/interfaces/IArticleAnchor.sol";
-import {ArticleAnchor} from "../src/ArticleAnchor.sol";
-import {ArticleSubmission} from "../src/ArticleLib.sol";
-import {Client} from "../src/interfaces/Client.sol";
-import {ISubmissionGateway} from "../src/interfaces/ISubmissionGateway.sol";
-import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
-import {MockRouter} from "./mocks/MockRouter.sol";
+import { ArticleAnchor } from "../src/ArticleAnchor.sol";
+import { ArticleSubmission } from "../src/ArticleLib.sol";
+import { Client } from "../src/interfaces/Client.sol";
+import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
+import { ISubmissionGateway } from "../src/interfaces/ISubmissionGateway.sol";
+import { MockRouter } from "./mocks/MockRouter.sol";
+import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 
 contract CCIPTest is ArticleTestBase {
-    uint64 internal constant TEST_SEL = 111111;
+    uint64 internal constant TEST_SEL = 111_111;
     address internal constant GATEWAY = address(0xA11CE);
     uint256 internal constant AUTHOR_KEY = 0xC0FFEE;
     address internal constant FOREIGN_SENDER = address(0xDEAD);
@@ -96,7 +96,7 @@ contract CCIPTest is ArticleTestBase {
 
     function test_notarizeUnanchoredBatchReverts() public {
         vm.expectRevert(IArticleAnchor.NoBatch.selector);
-        hub.notarize{value: 0}(0);
+        hub.notarize{ value: 0 }(0);
     }
 
     function test_notarizeRevertsBeforeK() public {
@@ -106,7 +106,7 @@ contract CCIPTest is ArticleTestBase {
         vm.roll(anchoredAt + hub.NOTARY_K() - 1);
 
         vm.expectRevert(IArticleAnchor.NotFinal.selector);
-        hub.notarize{value: 0.01 ether}(0);
+        hub.notarize{ value: 0.01 ether }(0);
     }
 
     function test_notarizeSendsAfterK() public {
@@ -115,7 +115,7 @@ contract CCIPTest is ArticleTestBase {
         vm.roll(hub.anchoredAtBlock(0) + hub.NOTARY_K());
         bytes32 root = hub.rootAt(0);
 
-        hub.notarize{value: 0.02 ether}(0);
+        hub.notarize{ value: 0.02 ether }(0);
 
         assertEq(mock.lastDest(), TEST_SEL, "destination = gateway chain");
         assertEq(mock.lastReceiver(), GATEWAY, "receiver = gateway");

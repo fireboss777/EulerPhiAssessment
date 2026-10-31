@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {Script} from "forge-std/Script.sol";
-import {SubmissionGateway} from "../src/SubmissionGateway.sol";
+import { SubmissionGateway } from "../src/SubmissionGateway.sol";
+import { Script } from "forge-std/Script.sol";
 
 /// @notice Deploys the L1 SubmissionGateway (plain contract — no proxy, no
 /// upgrade path: the L1 record endpoint is deliberately immutable).

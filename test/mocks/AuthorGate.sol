@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {ECDSA} from "solady/utils/ECDSA.sol";
+import { ECDSA } from "solady/utils/ECDSA.sol";
 
 /// @dev Test-only author gate: mirrors the authorship check the hub runs, so
 /// the signature-binding rule gets its own RED cycle without deploying the

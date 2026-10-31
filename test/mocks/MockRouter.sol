@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {Client} from "../../src/interfaces/Client.sol";
-import {IArticleAnchor} from "../../src/interfaces/IArticleAnchor.sol";
+import { Client } from "../../src/interfaces/Client.sol";
+import { IArticleAnchor } from "../../src/interfaces/IArticleAnchor.sol";
 
 /// @notice Test double for Chainlink's Router: captures ccipSend calls and
 /// fakes ccipReceive-side deliveries. Mirrors upstream quirks worth keeping:

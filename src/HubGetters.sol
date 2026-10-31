@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {IArticleAnchor} from "./interfaces/IArticleAnchor.sol";
-import {IHubGetters} from "./interfaces/IHubGetters.sol";
+import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
+import { IHubGetters } from "./interfaces/IHubGetters.sol";
 
 /// @title HubGetters — the hub's 14 read getters, implemented once, here.
 /// @notice `ArticleAnchor` inherits this contract instead of writing the

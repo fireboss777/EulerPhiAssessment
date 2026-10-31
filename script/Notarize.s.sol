@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {Script} from "forge-std/Script.sol";
-import {console} from "forge-std/console.sol";
-import {ArticleAnchor} from "../src/ArticleAnchor.sol";
+import { ArticleAnchor } from "../src/ArticleAnchor.sol";
+import { Script } from "forge-std/Script.sol";
+import { console } from "forge-std/console.sol";
 
 /// @notice Keeper: notarizes hub batch roots upward to the L1 gateway via
 /// CCIP. The contract enforces the K-confirmation gate itself — when it
@@ -25,7 +25,7 @@ contract Notarize is Script {
         vm.startBroadcast();
         uint256 sent;
         for (uint256 i = start; i < anchoredBatches; ++i) {
-            try hub.notarize{value: fee}(i) {
+            try hub.notarize{ value: fee }(i) {
                 unchecked {
                     ++sent;
                 }

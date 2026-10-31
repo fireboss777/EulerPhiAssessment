@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {ArticleSubmission} from "./ArticleLib.sol";
-import {Client} from "./interfaces/Client.sol";
-import {IRouterClient} from "./interfaces/IRouterClient.sol";
-import {ISubmissionGateway} from "./interfaces/ISubmissionGateway.sol";
-import {IAny2EVMMessageReceiver} from "./interfaces/IAny2EVMMessageReceiver.sol";
+import { ArticleSubmission } from "./ArticleLib.sol";
+import { Client } from "./interfaces/Client.sol";
+import { IAny2EVMMessageReceiver } from "./interfaces/IAny2EVMMessageReceiver.sol";
+import { IRouterClient } from "./interfaces/IRouterClient.sol";
+import { ISubmissionGateway } from "./interfaces/ISubmissionGateway.sol";
 
 /// @title SubmissionGateway — the L1 endpoint (two roles, both pinned).
 /// @notice Every external entry point, getter, constant and event is declared
@@ -65,13 +65,13 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         uint256 fee = IRouterClient(ROUTER).getFee(BASE_CHAIN_SELECTOR, m);
         require(msg.value >= fee, InsufficientFee());
 
-        bytes32 messageId = IRouterClient(ROUTER).ccipSend{value: fee}(BASE_CHAIN_SELECTOR, m);
+        bytes32 messageId = IRouterClient(ROUTER).ccipSend{ value: fee }(BASE_CHAIN_SELECTOR, m);
         emit SubmittedOnL1(msg.sender, leafDigest, messageId);
 
         // Return the unused portion (router keeps overpayment; we don't).
         uint256 excess = msg.value - fee;
         if (excess > 0) {
-            (bool ok,) = msg.sender.call{value: excess}("");
+            (bool ok,) = msg.sender.call{ value: excess }("");
             require(ok, RefundFailed());
         }
     }

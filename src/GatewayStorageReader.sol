@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {ISubmissionGateway} from "./interfaces/ISubmissionGateway.sol";
-import {IGatewayStorageReader} from "./interfaces/IGatewayStorageReader.sol";
+import { IGatewayStorageReader } from "./interfaces/IGatewayStorageReader.sol";
+import { ISubmissionGateway } from "./interfaces/ISubmissionGateway.sol";
 
 /// @title GatewayStorageReader — read-only facade over the gateway's ERC-7201 namespace.
 /// @notice See `IGatewayStorageReader` for the API, for why it exists (a

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {IGatewayStorageReader} from "../src/interfaces/IGatewayStorageReader.sol";
-import {GatewayStorageReader} from "../src/GatewayStorageReader.sol";
-import {SubmissionGateway} from "../src/SubmissionGateway.sol";
-import {ArticleAnchor} from "../src/ArticleAnchor.sol";
-import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
+import { ArticleAnchor } from "../src/ArticleAnchor.sol";
+import { GatewayStorageReader } from "../src/GatewayStorageReader.sol";
+import { SubmissionGateway } from "../src/SubmissionGateway.sol";
+import { IGatewayStorageReader } from "../src/interfaces/IGatewayStorageReader.sol";
+import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 
 /// @dev Same cross-check discipline as the hub reader: every value read through
 /// the gateway namespace must equal what the gateway reports, after real state
