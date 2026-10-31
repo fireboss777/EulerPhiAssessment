@@ -230,9 +230,10 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
         emit Submitted(payload.author, msg.sender, leafDigest);
     }
 
-    function _authorizeUpgrade(address) internal view override {
-        require(msg.sender == admin, AdminOnly());
-    }
+    /// @dev The guard IS the `onlyAdmin` modifier, hence the empty body: OZ
+    /// invokes this hook from `upgradeToAndCall` before writing the ERC-1967
+    /// implementation slot, and `msg.sender` survives the delegatecall hop.
+    function _authorizeUpgrade(address) internal view override onlyAdmin {}
 
     /// @dev Contract-side tree build over `journal[start..end)` in Solady's
     /// heap layout (pair-sorted keccak; leaf k sits at 2L-2-k, node i hashes
