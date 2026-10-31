@@ -27,6 +27,18 @@ import {Client} from "./Client.sol";
 /// satisfies Chainlink's `IAny2EVMMessageReceiver` for the standard entry.
 interface ISubmissionGateway {
     // ---------------------------------------------------------------------
+    // Events
+    // ---------------------------------------------------------------------
+
+    /// @notice A paid submission was forwarded toward the hub.
+    /// @param submitter The gas + fee payer (the transaction is theirs).
+    /// @param messageId Chainlink's message id for the hop.
+    event SubmittedOnL1(address indexed submitter, bytes32 indexed leafDigest, bytes32 messageId);
+
+    /// @notice A notarized root was accepted and the cursor advanced.
+    event RootNotarized(uint256 indexed batchIndex, bytes32 root);
+
+    // ---------------------------------------------------------------------
     // Errors (thrown by the implementation; declared here so the ABI and the
     // docs of every failure mode live with the API they belong to)
     // ---------------------------------------------------------------------
@@ -52,42 +64,6 @@ interface ISubmissionGateway {
     error BadSelector();
     /// @notice `batchIndex != nextBatch` — skips, reorders and replays die here.
     error OutOfOrder();
-
-    // ---------------------------------------------------------------------
-    // Configuration & record
-    // ---------------------------------------------------------------------
-
-    /// @notice Hub-side calldata for a journaled submission is small; 400k
-    /// covers digest+sig checks + journal SSTORE with generous headroom.
-    function SUBMIT_GAS_LIMIT() external view returns (uint256);
-
-    /// @notice Chainlink Router on Ethereum (immutable — no lane retargeting).
-    function router() external view returns (address);
-
-    /// @notice The `ArticleAnchor` proxy on the hub chain: receiver of the
-    /// paid lane and the only whitelisted sender of notarized roots.
-    function hub() external view returns (address);
-
-    /// @notice Chainlink chain selector of the hub chain (not a chain id).
-    function baseChainSelector() external view returns (uint64);
-
-    /// @notice Next batch index acceptable — no skips, no reordering, no replays.
-    function nextBatch() external view returns (uint256);
-
-    /// @notice Notarized root of batch `batchIndex` as recorded on Ethereum.
-    function notarizedRoot(uint256 batchIndex) external view returns (bytes32);
-
-    // ---------------------------------------------------------------------
-    // Events
-    // ---------------------------------------------------------------------
-
-    /// @notice A paid submission was forwarded toward the hub.
-    /// @param submitter The gas + fee payer (the transaction is theirs).
-    /// @param messageId Chainlink's message id for the hop.
-    event SubmittedOnL1(address indexed submitter, bytes32 indexed leafDigest, bytes32 messageId);
-
-    /// @notice A notarized root was accepted and the cursor advanced.
-    event RootNotarized(uint256 indexed batchIndex, bytes32 root);
 
     // ---------------------------------------------------------------------
     // Paid entry lane: Ethereum -> hub
@@ -122,4 +98,28 @@ interface ISubmissionGateway {
     /// @param batchIndex Must equal `nextBatch` (0, 1, 2 … in arrival order).
     /// @param root The frozen hub root for that batch.
     function receiveRoot(uint256 batchIndex, bytes32 root) external;
+
+    // ---------------------------------------------------------------------
+    // Views — configuration & record
+    // ---------------------------------------------------------------------
+
+    /// @notice Hub-side calldata for a journaled submission is small; 400k
+    /// covers digest+sig checks + journal SSTORE with generous headroom.
+    function SUBMIT_GAS_LIMIT() external view returns (uint256);
+
+    /// @notice Chainlink Router on Ethereum (immutable — no lane retargeting).
+    function router() external view returns (address);
+
+    /// @notice The `ArticleAnchor` proxy on the hub chain: receiver of the
+    /// paid lane and the only whitelisted sender of notarized roots.
+    function hub() external view returns (address);
+
+    /// @notice Chainlink chain selector of the hub chain (not a chain id).
+    function baseChainSelector() external view returns (uint64);
+
+    /// @notice Next batch index acceptable — no skips, no reordering, no replays.
+    function nextBatch() external view returns (uint256);
+
+    /// @notice Notarized root of batch `batchIndex` as recorded on Ethereum.
+    function notarizedRoot(uint256 batchIndex) external view returns (bytes32);
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 import {console} from "forge-std/console.sol";
 import {MerkleTreeLib} from "solady/utils/MerkleTreeLib.sol";
@@ -19,24 +19,6 @@ contract GasTest is ArticleTestBase {
     uint64 internal constant SEL = 8453;
     uint256 internal constant KEY = 0x9A5;
 
-    function _newHub(address router) internal returns (ArticleAnchor) {
-        ArticleAnchor hub = deployHub(address(this), router, SEL);
-        hub.setGateway(address(0x9999));
-        return hub;
-    }
-
-    function _measuredSubmit(ArticleAnchor hub, uint256 salt, uint256 key)
-        internal
-        returns (uint256 used, ArticleSubmission memory p)
-    {
-        p = payloadFor(vm.addr(key), salt);
-        bytes memory sig = signArticle(hub, p, key);
-        vm.cool(address(hub)); // fresh transaction: all slots cold
-        uint256 g0 = gasleft();
-        hub.submitArticle(leafOf(p), sig, p);
-        used = g0 - gasleft();
-    }
-
     function test_gasSubmit() public {
         ArticleAnchor hub = _newHub(address(0));
         (uint256 cold,) = _measuredSubmit(hub, 1, KEY);
@@ -49,14 +31,14 @@ contract GasTest is ArticleTestBase {
 
     function test_gasAnchor() public {
         ArticleAnchor hub = _newHub(address(0));
-        seedBatch(hub, 10);
+        _seedBatch(hub, 10);
         vm.cool(address(hub));
         uint256 g0 = gasleft();
         hub.anchorNextBatch();
         uint256 anchor10 = g0 - gasleft();
 
         ArticleAnchor hub2 = _newHub(address(0));
-        seedBatch(hub2, 200);
+        _seedBatch(hub2, 200);
         vm.cool(address(hub2));
         g0 = gasleft();
         hub2.anchorNextBatch();
@@ -70,9 +52,9 @@ contract GasTest is ArticleTestBase {
 
     function test_gasVerify() public {
         ArticleAnchor hub = _newHub(address(0));
-        seedBatch(hub, 10);
+        _seedBatch(hub, 10);
         hub.anchorNextBatch();
-        bytes32[] memory proof = MerkleTreeLib.leafProof(MerkleTreeLib.build(sliceJournal(hub, 0, 10)), 3);
+        bytes32[] memory proof = MerkleTreeLib.leafProof(MerkleTreeLib.build(_sliceJournal(hub, 0, 10)), 3);
 
         vm.cool(address(hub)); // a reader's eth_call starts cold
         uint256 g0 = gasleft();
@@ -88,7 +70,7 @@ contract GasTest is ArticleTestBase {
         MockRouter mock = new MockRouter();
         mock.setCapture(false); // forensics off: measure the keeper's own cost
         ArticleAnchor hub = _newHub(address(mock));
-        seedBatch(hub, 10);
+        _seedBatch(hub, 10);
         hub.anchorNextBatch();
         vm.roll(hub.anchoredAtBlock(0) + hub.NOTARY_K());
         vm.deal(address(this), 1 ether);
@@ -110,13 +92,31 @@ contract GasTest is ArticleTestBase {
         SubmissionGateway gw = new SubmissionGateway(address(mock), address(hub), SEL);
         vm.deal(address(this), 1 ether);
 
-        ArticleSubmission memory p = payloadFor(vm.addr(KEY), 3);
-        bytes memory sig = signArticle(hub, p, KEY);
+        ArticleSubmission memory p = _payloadFor(vm.addr(KEY), 3);
+        bytes memory sig = _signArticle(hub, p, KEY);
         uint256 g0 = gasleft();
-        gw.submitArticle{value: mock.fee()}(leafOf(p), sig, p);
+        gw.submitArticle{value: mock.fee()}(_leafOf(p), sig, p);
         uint256 used = g0 - gasleft();
 
         console.log("gateway submit (incl fee) ", used);
         assertLt(used, 52_000, "gateway cost drifted up");
+    }
+
+    function _newHub(address router) internal returns (ArticleAnchor) {
+        ArticleAnchor hub = _deployHub(address(this), router, SEL);
+        hub.setGateway(address(0x9999));
+        return hub;
+    }
+
+    function _measuredSubmit(ArticleAnchor hub, uint256 salt, uint256 key)
+        internal
+        returns (uint256 used, ArticleSubmission memory p)
+    {
+        p = _payloadFor(vm.addr(key), salt);
+        bytes memory sig = _signArticle(hub, p, key);
+        vm.cool(address(hub)); // fresh transaction: all slots cold
+        uint256 g0 = gasleft();
+        hub.submitArticle(_leafOf(p), sig, p);
+        used = g0 - gasleft();
     }
 }

@@ -1,17 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 import {Test} from "forge-std/Test.sol";
 import {ArticleLib, ArticleSubmission} from "../src/ArticleLib.sol";
+import {AuthorGate} from "./mocks/AuthorGate.sol";
 import {ECDSA} from "solady/utils/ECDSA.sol";
-
-/// @dev Test-only author gate: mirrors the authorship check the hub will run
-/// (Task 2). Lives here so the signature-binding rule has its own RED cycle.
-contract AuthorGate {
-    function requireAuthor(bytes32 digest, bytes calldata sig, address author) external view {
-        require(ECDSA.recover(digest, sig) == author, "not author");
-    }
-}
 
 contract ArticleLibTest is Test {
     /// @dev Independent pins from `cast keccak` + `cast abi-encode` (see Task 1 brief).
@@ -20,23 +13,6 @@ contract ArticleLibTest is Test {
 
     address internal constant AUTHOR = 0x1111111111111111111111111111111111111111;
     uint256 internal constant FORGER_KEY = 0xA11CE;
-
-    function _pinnedPayload() internal pure returns (ArticleSubmission memory) {
-        return ArticleSubmission({
-            author: AUTHOR,
-            titleHash: bytes32(uint256(1)),
-            bodyHash: bytes32(uint256(2)),
-            cidHash: bytes32(uint256(3)),
-            uuid: bytes32(uint256(4)),
-            timestamp: 1700000000,
-            deadline: 1700003600
-        });
-    }
-
-    function test_hashStructIsPinned() public pure {
-        assertEq(ArticleLib.TYPEHASH, TYPEHASH_PIN, "typehash drifted");
-        assertEq(ArticleLib.hashStruct(_pinnedPayload()), HASHSTRUCT_PIN, "struct hash drifted");
-    }
 
     function test_forgedByAuthorSigReverts() public {
         ArticleSubmission memory p = _pinnedPayload();
@@ -58,5 +34,22 @@ contract ArticleLibTest is Test {
         assertEq(ECDSA.recover(digest, goodSig), vm.addr(authorKey), "recover mismatch");
 
         AuthorGate(address(new AuthorGate())).requireAuthor(digest, goodSig, vm.addr(authorKey));
+    }
+
+    function test_hashStructIsPinned() public pure {
+        assertEq(ArticleLib.TYPEHASH, TYPEHASH_PIN, "typehash drifted");
+        assertEq(ArticleLib.hashStruct(_pinnedPayload()), HASHSTRUCT_PIN, "struct hash drifted");
+    }
+
+    function _pinnedPayload() internal pure returns (ArticleSubmission memory) {
+        return ArticleSubmission({
+            author: AUTHOR,
+            titleHash: bytes32(uint256(1)),
+            bodyHash: bytes32(uint256(2)),
+            cidHash: bytes32(uint256(3)),
+            uuid: bytes32(uint256(4)),
+            timestamp: 1700000000,
+            deadline: 1700003600
+        });
     }
 }

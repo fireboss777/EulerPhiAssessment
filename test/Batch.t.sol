@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 import {MerkleTreeLib} from "solady/utils/MerkleTreeLib.sol";
 import {IArticleAnchor} from "../src/interfaces/IArticleAnchor.sol";
@@ -8,8 +8,8 @@ import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
 
 contract BatchTest is ArticleTestBase {
     function test_anchorRequiresMinOrDeadline() public {
-        ArticleAnchor hub = deployHub();
-        seedBatch(hub, hub.MIN_BATCH() - 1); // 9 < 10, same block => no deadline either
+        ArticleAnchor hub = _deployHub();
+        _seedBatch(hub, hub.MIN_BATCH() - 1); // 9 < 10, same block => no deadline either
 
         vm.expectRevert(IArticleAnchor.BatchNotReady.selector);
         hub.anchorNextBatch();
@@ -24,8 +24,8 @@ contract BatchTest is ArticleTestBase {
     }
 
     function test_anchorAtMaxBatch() public {
-        ArticleAnchor hub = deployHub();
-        seedBatch(hub, hub.MAX_BATCH() + 5); // 205 pending
+        ArticleAnchor hub = _deployHub();
+        _seedBatch(hub, hub.MAX_BATCH() + 5); // 205 pending
 
         hub.anchorNextBatch();
         assertEq(hub.lastAnchoredIndex(), 200, "capped at MAX_BATCH");
@@ -41,8 +41,8 @@ contract BatchTest is ArticleTestBase {
     }
 
     function test_permissionlessAnchor() public {
-        ArticleAnchor hub = deployHub();
-        seedBatch(hub, 10);
+        ArticleAnchor hub = _deployHub();
+        _seedBatch(hub, 10);
 
         vm.prank(address(0x5EED));
         hub.anchorNextBatch();
@@ -51,20 +51,20 @@ contract BatchTest is ArticleTestBase {
     }
 
     function test_emptyAnchorReverts() public {
-        ArticleAnchor hub = deployHub();
+        ArticleAnchor hub = _deployHub();
 
         vm.expectRevert(IArticleAnchor.BatchNotReady.selector);
         hub.anchorNextBatch();
     }
 
     function test_rangeFreezeAfterAppend() public {
-        ArticleAnchor hub = deployHub();
-        seedBatch(hub, 10);
+        ArticleAnchor hub = _deployHub();
+        _seedBatch(hub, 10);
         hub.anchorNextBatch();
         bytes32 root0 = hub.rootAt(0);
 
-        seedBatch(hub, 1); // leaf enters the NEXT batch's window
-        bytes32 rebuilt = MerkleTreeLib.root(MerkleTreeLib.build(sliceJournal(hub, 0, 10)));
+        _seedBatch(hub, 1); // leaf enters the NEXT batch's window
+        bytes32 rebuilt = MerkleTreeLib.root(MerkleTreeLib.build(_sliceJournal(hub, 0, 10)));
         assertEq(rebuilt, root0, "batch0 root reproducible from journal");
 
         vm.warp(block.timestamp + hub.BATCH_DEADLINE() + 1);
@@ -75,22 +75,22 @@ contract BatchTest is ArticleTestBase {
     }
 
     function test_verifyAgainstBatchTrue() public {
-        ArticleAnchor hub = deployHub();
-        seedBatch(hub, 10);
+        ArticleAnchor hub = _deployHub();
+        _seedBatch(hub, 10);
         hub.anchorNextBatch();
 
-        bytes32[] memory tree = MerkleTreeLib.build(sliceJournal(hub, 0, 10));
+        bytes32[] memory tree = MerkleTreeLib.build(_sliceJournal(hub, 0, 10));
         bytes32[] memory proof = MerkleTreeLib.leafProof(tree, 3);
 
         assertTrue(hub.verifyAgainstBatch(0, hub.journal(3), proof), "honest proof verifies");
     }
 
     function test_verifyAgainstBatchFalse() public {
-        ArticleAnchor hub = deployHub();
-        seedBatch(hub, 10);
+        ArticleAnchor hub = _deployHub();
+        _seedBatch(hub, 10);
         hub.anchorNextBatch();
 
-        bytes32[] memory tree = MerkleTreeLib.build(sliceJournal(hub, 0, 10));
+        bytes32[] memory tree = MerkleTreeLib.build(_sliceJournal(hub, 0, 10));
         bytes32[] memory proof = MerkleTreeLib.leafProof(tree, 3);
         bytes32 leaf = hub.journal(3);
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -10,22 +10,6 @@ import {ArticleTestBase} from "./utils/ArticleTestBase.sol";
 import {ArticleAnchorV2Stub} from "./mocks/ArticleAnchorV2Stub.sol";
 
 contract UpgradeTest is ArticleTestBase {
-    /// @dev Canonical deploy shape (mirrors script/DeployHub.s.sol): an OZ
-    /// ERC1967 proxy — with NO admin/authority entry at all — running
-    /// `initialize` in its constructor, so `upgradeToAndCall` (gated by
-    /// `_authorizeUpgrade`) is the ONLY way up. Returns the implementation so
-    /// tests can assert what the proxy's ERC-1967 slots point at.
-    function _proxyHub(address admin_, address router_, uint64 chainSelector_)
-        internal
-        returns (ArticleAnchor hub, ArticleAnchor impl)
-    {
-        impl = new ArticleAnchor();
-        address proxy = address(
-            new ERC1967Proxy(address(impl), abi.encodeCall(ArticleAnchor.initialize, (admin_, router_, chainSelector_)))
-        );
-        hub = ArticleAnchor(proxy);
-    }
-
     function test_nonAdminUpgradeReverts() public {
         (ArticleAnchor hub,) = _proxyHub(address(this), address(0), 8453);
         ArticleAnchor newImpl = new ArticleAnchor();
@@ -37,7 +21,7 @@ contract UpgradeTest is ArticleTestBase {
 
     function test_journalPreservedAcrossUpgrade() public {
         (ArticleAnchor hub,) = _proxyHub(address(this), address(0), 8453);
-        seedBatch(hub, 3);
+        _seedBatch(hub, 3);
         bytes32 leaf0 = hub.journal(0);
         bytes32 leaf1 = hub.journal(1);
         bytes32 leaf2 = hub.journal(2);
@@ -136,5 +120,21 @@ contract UpgradeTest is ArticleTestBase {
             "impl slot must point at the implementation"
         );
         assertEq(hub.admin(), address(this), "app state lives behind the proxy");
+    }
+
+    /// @dev Canonical deploy shape (mirrors script/DeployHub.s.sol): an OZ
+    /// ERC1967 proxy — with NO admin/authority entry at all — running
+    /// `initialize` in its constructor, so `upgradeToAndCall` (gated by
+    /// `_authorizeUpgrade`) is the ONLY way up. Returns the implementation so
+    /// tests can assert what the proxy's ERC-1967 slots point at.
+    function _proxyHub(address admin_, address router_, uint64 chainSelector_)
+        internal
+        returns (ArticleAnchor hub, ArticleAnchor impl)
+    {
+        impl = new ArticleAnchor();
+        address proxy = address(
+            new ERC1967Proxy(address(impl), abi.encodeCall(ArticleAnchor.initialize, (admin_, router_, chainSelector_)))
+        );
+        hub = ArticleAnchor(proxy);
     }
 }

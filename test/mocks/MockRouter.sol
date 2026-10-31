@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 import {Client} from "../../src/interfaces/Client.sol";
 import {IArticleAnchor} from "../../src/interfaces/IArticleAnchor.sol";
@@ -23,10 +23,6 @@ contract MockRouter {
 
     function setCapture(bool capture_) external {
         capture = capture_;
-    }
-
-    function getFee(uint64, Client.EVM2AnyMessage memory) external view returns (uint256) {
-        return fee;
     }
 
     function ccipSend(uint64 destinationChainSelector, Client.EVM2AnyMessage calldata message)
@@ -56,5 +52,9 @@ contract MockRouter {
 
     function deliverViaCcipReceive(address hub, Client.Any2EVMMessage calldata message) external {
         IArticleAnchor(hub).ccipReceive(message);
+    }
+
+    function getFee(uint64, Client.EVM2AnyMessage memory) external view returns (uint256) {
+        return fee;
     }
 }

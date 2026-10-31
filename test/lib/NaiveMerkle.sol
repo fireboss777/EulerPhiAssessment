@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 /// @notice Independent reference implementation of the exact tree shape
 /// `MerkleTreeLib.build` produces (pair-sorted keccak256 over a heap-laid-out

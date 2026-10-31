@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 import {ArticleAnchor} from "../src/ArticleAnchor.sol";
 import {ArticleSubmission} from "../src/ArticleLib.sol";
@@ -24,37 +24,13 @@ contract GatewayTest is ArticleTestBase {
         gw = new SubmissionGateway(address(mock), HUB, BASE_SEL);
     }
 
-    /// @dev Gateway lane never verifies signatures (decision 1a) — sig bytes
-    /// here are payload bytes, byte-identity is what's under test.
-    function _payloadAndSig() internal returns (ArticleSubmission memory p, bytes memory sig) {
-        p = payloadFor(vm.addr(AUTHOR_KEY), 11);
-        sig = abi.encodePacked(bytes32(uint256(0xAA)), bytes32(uint256(0xBB)), uint8(27));
-    }
-
-    /// @dev Production wire format: the hub sends `abi.encodeCall` of
-    /// `receiveRoot` — fixtures must use the SAME encoding as the contract,
-    /// otherwise the tests validate a payload nobody produces.
-    function _rootMsg(uint64 sel, address sender, uint256 batchIndex, bytes32 root)
-        internal
-        pure
-        returns (Client.Any2EVMMessage memory)
-    {
-        return Client.Any2EVMMessage({
-            messageId: keccak256(abi.encode(batchIndex, root)),
-            sourceChainSelector: sel,
-            sender: abi.encode(sender),
-            data: abi.encodeCall(ISubmissionGateway.receiveRoot, (batchIndex, root)),
-            destTokenAmounts: new Client.EVMTokenAmount[](0)
-        });
-    }
-
     // ------------------------------------------------------------------
     // Paid entry lane (Ethereum -> hub)
     // ------------------------------------------------------------------
 
     function test_gatewayForwardsByteIdenticalCalldata() public {
         (ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
-        bytes32 leaf = leafOf(p);
+        bytes32 leaf = _leafOf(p);
         vm.deal(address(this), 1 ether);
 
         gw.submitArticle{value: 0.05 ether}(leaf, sig, p);
@@ -73,7 +49,7 @@ contract GatewayTest is ArticleTestBase {
 
     function test_gatewayDigestMismatchReverts() public {
         (ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
-        bytes32 wrongLeaf = bytes32(uint256(leafOf(p)) ^ 1);
+        bytes32 wrongLeaf = bytes32(uint256(_leafOf(p)) ^ 1);
 
         vm.expectRevert(ISubmissionGateway.DigestMismatch.selector);
         gw.submitArticle{value: 0}(wrongLeaf, sig, p);
@@ -84,14 +60,14 @@ contract GatewayTest is ArticleTestBase {
         vm.deal(address(this), 1 ether);
 
         vm.expectRevert(ISubmissionGateway.InsufficientFee.selector);
-        gw.submitArticle{value: 0.005 ether}(leafOf(p), sig, p); // fee is 0.01
+        gw.submitArticle{value: 0.005 ether}(_leafOf(p), sig, p); // fee is 0.01
     }
 
     function test_excessRefunded() public {
         (ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
         vm.deal(address(this), 1 ether);
 
-        gw.submitArticle{value: 0.03 ether}(leafOf(p), sig, p);
+        gw.submitArticle{value: 0.03 ether}(_leafOf(p), sig, p);
 
         assertEq(address(gw).balance, 0, "gateway retains nothing");
         assertEq(mock.lastValue(), mock.fee(), "router got the fee, not the excess");
@@ -145,14 +121,14 @@ contract GatewayTest is ArticleTestBase {
 
     function test_gatewayPayloadLandsInHub() public {
         // Hub pinned to this gateway, mock as shared router.
-        ArticleAnchor hub = deployHub(address(this), address(mock), BASE_SEL);
+        ArticleAnchor hub = _deployHub(address(this), address(mock), BASE_SEL);
         hub.setGateway(address(gw));
         assertEq(hub.gateway(), address(gw), "wiring");
 
         uint256 key = AUTHOR_KEY;
-        ArticleSubmission memory p = payloadFor(vm.addr(key), 12);
-        bytes32 leaf = leafOf(p);
-        bytes memory sig = signArticle(hub, p, key);
+        ArticleSubmission memory p = _payloadFor(vm.addr(key), 12);
+        bytes32 leaf = _leafOf(p);
+        bytes memory sig = _signArticle(hub, p, key);
         vm.deal(address(this), 1 ether);
 
         gw.submitArticle{value: 0.05 ether}(leaf, sig, p);
@@ -178,10 +154,10 @@ contract GatewayTest is ArticleTestBase {
     // ------------------------------------------------------------------
 
     function test_notarizeRoundTripIntoGateway() public {
-        ArticleAnchor hub = deployHub(address(this), address(mock), BASE_SEL);
+        ArticleAnchor hub = _deployHub(address(this), address(mock), BASE_SEL);
         SubmissionGateway gw2 = new SubmissionGateway(address(mock), address(hub), BASE_SEL);
         hub.setGateway(address(gw2)); // production wiring, not a dummy address
-        seedBatch(hub, 10);
+        _seedBatch(hub, 10);
         hub.anchorNextBatch();
         vm.roll(hub.anchoredAtBlock(0) + hub.NOTARY_K());
         vm.deal(address(this), 1 ether);
@@ -213,5 +189,29 @@ contract GatewayTest is ArticleTestBase {
         wrongSelector.data = abi.encodePacked(hex"deadbeef", abi.encode(0, root));
         vm.expectRevert(ISubmissionGateway.BadSelector.selector);
         mock.deliverViaCcipReceive(address(gw), wrongSelector);
+    }
+
+    /// @dev Gateway lane never verifies signatures (decision 1a) — sig bytes
+    /// here are payload bytes, byte-identity is what's under test.
+    function _payloadAndSig() internal returns (ArticleSubmission memory p, bytes memory sig) {
+        p = _payloadFor(vm.addr(AUTHOR_KEY), 11);
+        sig = abi.encodePacked(bytes32(uint256(0xAA)), bytes32(uint256(0xBB)), uint8(27));
+    }
+
+    /// @dev Production wire format: the hub sends `abi.encodeCall` of
+    /// `receiveRoot` — fixtures must use the SAME encoding as the contract,
+    /// otherwise the tests validate a payload nobody produces.
+    function _rootMsg(uint64 sel, address sender, uint256 batchIndex, bytes32 root)
+        internal
+        pure
+        returns (Client.Any2EVMMessage memory)
+    {
+        return Client.Any2EVMMessage({
+            messageId: keccak256(abi.encode(batchIndex, root)),
+            sourceChainSelector: sel,
+            sender: abi.encode(sender),
+            data: abi.encodeCall(ISubmissionGateway.receiveRoot, (batchIndex, root)),
+            destTokenAmounts: new Client.EVMTokenAmount[](0)
+        });
     }
 }

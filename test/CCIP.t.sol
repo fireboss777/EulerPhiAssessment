@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 import {IArticleAnchor} from "../src/interfaces/IArticleAnchor.sol";
 import {ArticleAnchor} from "../src/ArticleAnchor.sol";
@@ -21,31 +21,8 @@ contract CCIPTest is ArticleTestBase {
     function setUp() public override {
         super.setUp();
         mock = new MockRouter();
-        hub = deployHub(address(this), address(mock), TEST_SEL);
+        hub = _deployHub(address(this), address(mock), TEST_SEL);
         hub.setGateway(GATEWAY);
-    }
-
-    function _inbound(uint64 sel, address sender, bytes32 leaf, bytes memory sig, ArticleSubmission memory p)
-        internal
-        pure
-        returns (Client.Any2EVMMessage memory)
-    {
-        return Client.Any2EVMMessage({
-            messageId: keccak256(abi.encode(leaf, sender)),
-            sourceChainSelector: sel,
-            sender: abi.encode(sender),
-            data: abi.encode(leaf, sig, p),
-            destTokenAmounts: new Client.EVMTokenAmount[](0)
-        });
-    }
-
-    function _signedLeaf(uint256 key, uint256 salt)
-        internal
-        returns (bytes32 leaf, bytes memory sig, ArticleSubmission memory p)
-    {
-        p = payloadFor(vm.addr(key), salt);
-        leaf = leafOf(p);
-        sig = signArticle(hub, p, key);
     }
 
     // ------------------------------------------------------------------
@@ -123,7 +100,7 @@ contract CCIPTest is ArticleTestBase {
     }
 
     function test_notarizeRevertsBeforeK() public {
-        seedBatch(hub, 10);
+        _seedBatch(hub, 10);
         hub.anchorNextBatch();
         uint256 anchoredAt = hub.anchoredAtBlock(0);
         vm.roll(anchoredAt + hub.NOTARY_K() - 1);
@@ -133,7 +110,7 @@ contract CCIPTest is ArticleTestBase {
     }
 
     function test_notarizeSendsAfterK() public {
-        seedBatch(hub, 10);
+        _seedBatch(hub, 10);
         hub.anchorNextBatch();
         vm.roll(hub.anchoredAtBlock(0) + hub.NOTARY_K());
         bytes32 root = hub.rootAt(0);
@@ -147,5 +124,28 @@ contract CCIPTest is ArticleTestBase {
             mock.lastData(), abi.encodeCall(ISubmissionGateway.receiveRoot, (0, root)), "payload = (batchIndex, root)"
         );
         assertGt(mock.lastExtraArgs().length, 0, "gas limit extraArgs attached");
+    }
+
+    function _signedLeaf(uint256 key, uint256 salt)
+        internal
+        returns (bytes32 leaf, bytes memory sig, ArticleSubmission memory p)
+    {
+        p = _payloadFor(vm.addr(key), salt);
+        leaf = _leafOf(p);
+        sig = _signArticle(hub, p, key);
+    }
+
+    function _inbound(uint64 sel, address sender, bytes32 leaf, bytes memory sig, ArticleSubmission memory p)
+        internal
+        pure
+        returns (Client.Any2EVMMessage memory)
+    {
+        return Client.Any2EVMMessage({
+            messageId: keccak256(abi.encode(leaf, sender)),
+            sourceChainSelector: sel,
+            sender: abi.encode(sender),
+            data: abi.encode(leaf, sig, p),
+            destTokenAmounts: new Client.EVMTokenAmount[](0)
+        });
     }
 }

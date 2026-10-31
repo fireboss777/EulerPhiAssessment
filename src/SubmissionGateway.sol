@@ -86,6 +86,16 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         _applyNotaryPayload(message.data);
     }
 
+    /// @inheritdoc ISubmissionGateway
+    function receiveRoot(uint256 batchIndex, bytes32 root) public {
+        require(msg.sender == address(router), NotRouter());
+        require(batchIndex == nextBatch, OutOfOrder());
+
+        notarizedRoot[batchIndex] = root;
+        nextBatch = batchIndex + 1;
+        emit RootNotarized(batchIndex, root);
+    }
+
     /// @dev The hub encodes `receiveRoot` with `abi.encodeCall` — 4-byte
     /// selector + the two encoded words (68 bytes). Length AND selector are
     /// checked before decoding, so a payload built for any other function can
@@ -96,15 +106,5 @@ contract SubmissionGateway is ISubmissionGateway, IAny2EVMMessageReceiver {
         require(bytes4(data[0:4]) == ISubmissionGateway.receiveRoot.selector, BadSelector());
         (uint256 batchIndex, bytes32 root) = abi.decode(data[4:], (uint256, bytes32));
         receiveRoot(batchIndex, root);
-    }
-
-    /// @inheritdoc ISubmissionGateway
-    function receiveRoot(uint256 batchIndex, bytes32 root) public {
-        require(msg.sender == address(router), NotRouter());
-        require(batchIndex == nextBatch, OutOfOrder());
-
-        notarizedRoot[batchIndex] = root;
-        nextBatch = batchIndex + 1;
-        emit RootNotarized(batchIndex, root);
     }
 }

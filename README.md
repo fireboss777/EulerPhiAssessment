@@ -476,8 +476,10 @@ src/
   SubmissionGateway.sol    L1: payable entry lane (no ecrecover) + monotonic notary receiver
   ArticleLib.sol           EIP-712 struct + typehash
   interfaces/
-    IArticleAnchor.sol     hub's full public ABI (functions, getters, constants,
-                           events) + all 15 custom errors + every API NatSpec —
+    IArticleAnchor.sol     hub's full public ABI, laid out in style-guide order
+                           (events, then errors, then functions: actions first,
+                           `view` getters last) + all 15 custom errors + every
+                           API NatSpec —
                            ArticleAnchor inherits it, so the compiler keeps docs
                            and ABI in lockstep. Every failure is a typed error
                            declared here, never a revert string: each guard is
@@ -492,15 +494,64 @@ script/
   Anchor.s.sol Notarize.s.sol             permissionless keeper loops
   E2ESubmit.s.sol                         signs + submits against the live domain
   e2e-anvil.sh                            live end-to-end driver
+  style-audit.py                          style-guide order checks (see Code style)
 test/
   ArticleLib.t.sol Submit.t.sol Batch.t.sol MerkleDifferential.t.sol
   CCIP.t.sol Gateway.t.sol Upgrade.t.sol Gas.t.sol
   lib/NaiveMerkle.sol   independent reference Merkle (differential)
-  mocks/                MockRouter, ArticleAnchorV2Stub
+  mocks/                MockRouter, ArticleAnchorV2Stub, AuthorGate
 .gas-snapshot            forge snapshot output (regenerate with `forge snapshot`)
 soldeer.lock             dependency pins (solady v0.1.26, forge-std v1.17.0,
                          openzeppelin-contracts + -upgradeable v5.7.0)
 ```
+
+## Code style
+
+Contracts follow the [official Solidity style
+guide](https://docs.soliditylang.org/en/v0.8.38/style-guide.html). The work is
+split in two: `forge fmt` owns whitespace, indentation and line wrapping (hard
+gate: `forge fmt --check`), and `python3 script/style-audit.py` owns the
+ordering rules a formatter cannot express — it prints violations and exits
+non-zero.
+
+| Rule | Where you see it |
+|---|---|
+| **Order of functions** — `constructor` → `receive` → `fallback` → `external` → `public` → `internal` → `private`, with `view`/`pure` last inside each group | `ArticleAnchor`: `initialize` … `anchorNextBatch`, then the external `view`s, then the `public` lane handler, then `_submit` … `_domainNameAndVersion` |
+| **Order of layout** — type declarations → state variables → events → errors → modifiers → functions | interfaces open with their events, then the typed errors, then the ABI; contracts open with state, then `modifier onlyAdmin`, then functions |
+| **Modifier order** — visibility → mutability → `virtual` → `override` → custom | `ccipReceive(...) external override(ISubmissionGateway, IAny2EVMMessageReceiver)` |
+| **≤ 120 characters per line** | enforced by `forge fmt` (see exception 3) |
+
+Naming follows the guide: `CapWords` for contracts, structs and events,
+`mixedCase` for functions and variables, `UPPER_CASE_WITH_UNDERSCORES` for
+constants, and a leading `_` on every non-external **function** (`_submit`,
+`_buildRoot`, `_deployHub`, `_signedLeaf`). Two deliberate calls where the
+guide leaves room:
+
+- **library functions keep bare names** (`ArticleLib.hashStruct`) — the
+  library namespace already says "non-external", and that is what Solady's and
+  OpenZeppelin's libraries do;
+- **internal constants keep bare `UPPER_CASE`** (`ArticleLib.TYPEHASH`,
+  `ArticleTestBase.FORGER_KEY`) — prefixing them yields `_TYPEHASH`, which
+  reads as collision avoidance rather than visibility. Every `private`
+  constant does carry the underscore (`_HIGH_S_MAX`).
+
+Three exceptions, each leaning on the guide's own preamble: *"In the event of
+conflicts, project specific style guides take precedence"* and *"know when to
+be inconsistent"*.
+
+1. **One blank line between top-level declarations, not two.** `forge fmt`
+   collapses runs of blank lines to one, and `forge fmt --check` is a hard
+   gate — a whitespace rule that fights the formatter cannot be kept.
+2. **The vendored CCIP files are never reordered.** `Client.sol`,
+   `IRouterClient.sol` and `IAny2EVMMessageReceiver.sol` stay byte-comparable
+   with upstream (`smartcontractkit/ccip @ 171f9f0`), so the "re-verify against
+   upstream before a real lane" promise stays a `diff` instead of an
+   archaeology project. They keep Chainlink's own order (`getFee` is `view`
+   and sits before `ccipSend`).
+3. **One 121-character line**: the declaration of
+   `IArticleAnchor.verifyAgainstBatch`. `forge fmt`'s limit excludes the
+   trailing `;`, so that line is exactly 120 characters of code, and the only
+   way to shorten it would be renaming an ABI parameter to gain one character.
 
 ## Known limitations
 

@@ -18,7 +18,8 @@ struct ArticleSubmission {
 library ArticleLib {
     /// @dev keccak256 of the canonical type string.
     bytes32 internal constant TYPEHASH = keccak256(
-        "ArticleSubmission(address author,bytes32 titleHash,bytes32 bodyHash,bytes32 cidHash,bytes32 uuid,uint256 timestamp,uint256 deadline)"
+        "ArticleSubmission(address author,bytes32 titleHash,bytes32 bodyHash,"
+        "bytes32 cidHash,bytes32 uuid,uint256 timestamp,uint256 deadline)"
     );
 
     /// @dev EIP-712 `hashStruct` (domain binding is applied by the caller via

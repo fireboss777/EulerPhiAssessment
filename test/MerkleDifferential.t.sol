@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 import {Test} from "forge-std/Test.sol";
 import {MerkleTreeLib} from "solady/utils/MerkleTreeLib.sol";
@@ -9,13 +9,6 @@ import {NaiveMerkle} from "./lib/NaiveMerkle.sol";
 /// @notice Differential harness: Solady's optimized builder/verifier against
 /// an independent naive implementation (see test/lib/NaiveMerkle.sol).
 contract MerkleDifferentialTest is Test {
-    function _leaves(uint256 s, uint256 n) internal pure returns (bytes32[] memory leaves) {
-        leaves = new bytes32[](n);
-        for (uint256 i; i < n; ++i) {
-            leaves[i] = keccak256(abi.encode(s, i));
-        }
-    }
-
     function test_matchesNaiveReference(uint256 s, uint8 n) public view {
         uint256 count = bound(uint256(n), 1, 200); // cover up to MAX_BATCH
         bytes32[] memory leaves = _leaves(s, count);
@@ -54,5 +47,12 @@ contract MerkleDifferentialTest is Test {
 
         bytes32[] memory noProof = new bytes32[](0);
         assertTrue(MerkleProofLib.verify(noProof, soladyRoot, leaves[0]), "empty proof verifies");
+    }
+
+    function _leaves(uint256 s, uint256 n) internal pure returns (bytes32[] memory leaves) {
+        leaves = new bytes32[](n);
+        for (uint256 i; i < n; ++i) {
+            leaves[i] = keccak256(abi.encode(s, i));
+        }
     }
 }

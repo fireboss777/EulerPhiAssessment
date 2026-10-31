@@ -22,6 +22,7 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     // ---------------------------------------------------------------------
     // Constants (see plan: batch policy)
     // ---------------------------------------------------------------------
+
     /// @inheritdoc IArticleAnchor
     uint256 public constant MIN_BATCH = 10;
     /// @inheritdoc IArticleAnchor
@@ -40,6 +41,7 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     // ---------------------------------------------------------------------
     // Configuration (storage, never immutables: proxy-safe)
     // ---------------------------------------------------------------------
+
     /// @inheritdoc IArticleAnchor
     address public admin;
     /// @inheritdoc IArticleAnchor
@@ -52,6 +54,7 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     // ---------------------------------------------------------------------
     // Journal & batch state
     // ---------------------------------------------------------------------
+
     /// @inheritdoc IArticleAnchor
     bytes32[] public journal;
     /// @inheritdoc IArticleAnchor
@@ -84,6 +87,10 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
         _disableInitializers();
     }
 
+    // ---------------------------------------------------------------------
+    // Lifecycle
+    // ---------------------------------------------------------------------
+
     /// @inheritdoc IArticleAnchor
     function initialize(address admin_, address router_, uint64 chainSelector_) external initializer {
         require(admin_ != address(0), ZeroAdmin());
@@ -98,49 +105,12 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     }
 
     // ---------------------------------------------------------------------
-    // EIP-712 / UUPS wiring
-    // ---------------------------------------------------------------------
-
-    function _domainNameAndVersion() internal pure override returns (string memory, string memory) {
-        return ("EulerPhiArticle", "1");
-    }
-
-    function _authorizeUpgrade(address) internal view override {
-        require(msg.sender == admin, AdminOnly());
-    }
-
-    // ---------------------------------------------------------------------
     // Submission
     // ---------------------------------------------------------------------
 
     /// @inheritdoc IArticleAnchor
     function submitArticle(bytes32 leafDigest, bytes calldata sig, ArticleSubmission calldata payload) external {
         _submit(leafDigest, sig, payload);
-    }
-
-    function _submit(bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload) internal {
-        require(block.timestamp <= payload.deadline, Expired());
-        require(keccak256(abi.encode(payload)) == leafDigest, DigestMismatch());
-        // Canonical 65-byte (r, s, v) only; low-s enforced (Solady's recover
-        // deliberately accepts malleable s, so the gate lives here).
-        require(sig.length == 65, InvalidSignatureLength());
-        bytes32 s;
-        assembly ("memory-safe") {
-            s := mload(add(sig, 0x40)) // `s` at offset 0x40 of the bytes payload
-        }
-        require(uint256(s) <= _HIGH_S_MAX, NonCanonicalSignature());
-        bytes32 digest = _hashTypedData(ArticleLib.hashStruct(payload));
-        require(ECDSA.recover(digest, sig) == payload.author, NotAuthor());
-        require(block.timestamp >= lastSubmit[payload.author] + RATE_LIMIT, RateLimited());
-        require(!usedUuid[payload.author][payload.uuid], DuplicateUuid());
-
-        usedUuid[payload.author][payload.uuid] = true;
-        lastSubmit[payload.author] = block.timestamp;
-        // First leaf of a fresh batch window opens (and re-opens) the deadline.
-        if (journal.length == lastAnchoredIndex) batchOpenedAt = block.timestamp;
-        journal.push(leafDigest);
-
-        emit Submitted(payload.author, msg.sender, leafDigest);
     }
 
     // ---------------------------------------------------------------------
@@ -150,16 +120,6 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     /// @inheritdoc IArticleAnchor
     function ccipReceive(Client.Any2EVMMessage calldata message) external {
         consumeSubmittedArticle(message);
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function consumeSubmittedArticle(Client.Any2EVMMessage calldata message) public {
-        require(msg.sender == address(router), NotRouter());
-        require(message.sourceChainSelector == ethChainSelector, BadChain());
-        require(abi.decode(message.sender, (address)) == gateway, BadSender());
-        (bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload) =
-            abi.decode(message.data, (bytes32, bytes, ArticleSubmission));
-        _submit(leafDigest, sig, payload);
     }
 
     /// @inheritdoc IArticleAnchor
@@ -204,6 +164,76 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
         emit RootAnchored(batchIndex, root, start, end);
     }
 
+    // ---------------------------------------------------------------------
+    // Views
+    // ---------------------------------------------------------------------
+
+    /// @inheritdoc IArticleAnchor
+    function verifyAgainstBatch(uint256 batchIndex, bytes32 leaf, bytes32[] calldata proof)
+        external
+        view
+        returns (bool)
+    {
+        return MerkleProofLib.verifyCalldata(proof, rootAt[batchIndex], leaf);
+    }
+
+    /// @inheritdoc IArticleAnchor
+    function journalLength() external view returns (uint256) {
+        return journal.length;
+    }
+
+    /// @inheritdoc IArticleAnchor
+    function pendingLeaves() external view returns (uint256) {
+        return journal.length - lastAnchoredIndex;
+    }
+
+    // ---------------------------------------------------------------------
+    // Public: inbound lane handler (ccipReceive forwards into it)
+    // ---------------------------------------------------------------------
+
+    /// @inheritdoc IArticleAnchor
+    function consumeSubmittedArticle(Client.Any2EVMMessage calldata message) public {
+        require(msg.sender == address(router), NotRouter());
+        require(message.sourceChainSelector == ethChainSelector, BadChain());
+        require(abi.decode(message.sender, (address)) == gateway, BadSender());
+        (bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload) =
+            abi.decode(message.data, (bytes32, bytes, ArticleSubmission));
+        _submit(leafDigest, sig, payload);
+    }
+
+    // ---------------------------------------------------------------------
+    // Internal helpers (submission core, EIP-712 & UUPS wiring)
+    // ---------------------------------------------------------------------
+
+    function _submit(bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload) internal {
+        require(block.timestamp <= payload.deadline, Expired());
+        require(keccak256(abi.encode(payload)) == leafDigest, DigestMismatch());
+        // Canonical 65-byte (r, s, v) only; low-s enforced (Solady's recover
+        // deliberately accepts malleable s, so the gate lives here).
+        require(sig.length == 65, InvalidSignatureLength());
+        bytes32 s;
+        assembly ("memory-safe") {
+            s := mload(add(sig, 0x40)) // `s` at offset 0x40 of the bytes payload
+        }
+        require(uint256(s) <= _HIGH_S_MAX, NonCanonicalSignature());
+        bytes32 digest = _hashTypedData(ArticleLib.hashStruct(payload));
+        require(ECDSA.recover(digest, sig) == payload.author, NotAuthor());
+        require(block.timestamp >= lastSubmit[payload.author] + RATE_LIMIT, RateLimited());
+        require(!usedUuid[payload.author][payload.uuid], DuplicateUuid());
+
+        usedUuid[payload.author][payload.uuid] = true;
+        lastSubmit[payload.author] = block.timestamp;
+        // First leaf of a fresh batch window opens (and re-opens) the deadline.
+        if (journal.length == lastAnchoredIndex) batchOpenedAt = block.timestamp;
+        journal.push(leafDigest);
+
+        emit Submitted(payload.author, msg.sender, leafDigest);
+    }
+
+    function _authorizeUpgrade(address) internal view override {
+        require(msg.sender == admin, AdminOnly());
+    }
+
     /// @dev Contract-side tree build over `journal[start..end)` in Solady's
     /// heap layout (pair-sorted keccak; leaf k sits at 2L-2-k, node i hashes
     /// children 2i+1/2i+2, so a leftover leaf pairs with an internal node).
@@ -217,26 +247,7 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
         return MerkleTreeLib.root(MerkleTreeLib.build(leaves));
     }
 
-    /// @inheritdoc IArticleAnchor
-    function verifyAgainstBatch(uint256 batchIndex, bytes32 leaf, bytes32[] calldata proof)
-        external
-        view
-        returns (bool)
-    {
-        return MerkleProofLib.verifyCalldata(proof, rootAt[batchIndex], leaf);
-    }
-
-    // ---------------------------------------------------------------------
-    // Views
-    // ---------------------------------------------------------------------
-
-    /// @inheritdoc IArticleAnchor
-    function journalLength() external view returns (uint256) {
-        return journal.length;
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function pendingLeaves() external view returns (uint256) {
-        return journal.length - lastAnchoredIndex;
+    function _domainNameAndVersion() internal pure override returns (string memory, string memory) {
+        return ("EulerPhiArticle", "1");
     }
 }
