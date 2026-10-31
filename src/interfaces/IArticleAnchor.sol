@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 import {ArticleSubmission} from "../ArticleLib.sol";
 import {Client} from "./Client.sol";
+import {IHubGetters} from "./IHubGetters.sol";
 
 /// @title ArticleAnchor — the canonical journal & batch root registry (hub).
 /// @notice Public ABI of the hub, implemented by `src/ArticleAnchor.sol`
@@ -25,9 +26,10 @@ import {Client} from "./Client.sol";
 /// `proxiableUUID()`, `UPGRADE_INTERFACE_VERSION()` (OpenZeppelin
 /// `UUPSUpgradeable`); and the `Upgraded` event — emitted by OZ's inlined
 /// `ERC1967Utils`, so it IS part of this contract's ABI without being
-/// declared by us. Everything else — 28 functions and 3 events — is declared
-/// below.
-interface IArticleAnchor {
+/// declared by us. Everything else — 14 functions and 3 events — is declared
+/// below; the 14 read getters are inherited from `IHubGetters`, which this
+/// interface also inherits, so the hub still reaches its complete ABI here.
+interface IArticleAnchor is IHubGetters {
     /// @notice The hub's entire persistent state, in a single ERC-7201
     /// namespace. The implementation declares NO state variable of its own:
     /// every read and write goes through this struct at the fixed slot
@@ -214,63 +216,6 @@ interface IArticleAnchor {
 
     /// @notice Receiver-side gas limit attached to the CCIP notary message.
     function NOTARY_GAS_LIMIT() external view returns (uint256);
-
-    // ---------------------------------------------------------------------
-    // Views — configuration (storage, never immutables: proxy-safe)
-    // ---------------------------------------------------------------------
-
-    /// @notice The only key allowed to upgrade the implementation and to wire
-    /// the gateway. Set once (constructor / `initialize`) and never transferable
-    /// — deploy with a multisig or timelock from day one.
-    function admin() external view returns (address);
-
-    /// @notice Chainlink Router used for both CCIP lanes; also the gate that
-    /// must be `msg.sender` for any inbound delivery.
-    function router() external view returns (address);
-
-    /// @notice Chainlink chain selector of the opposite side (not a chain id).
-    function ethChainSelector() external view returns (uint64);
-
-    /// @notice The pinned L1 `SubmissionGateway`: sender whitelist for inbound
-    /// submissions and receiver of notarized roots. Wired post-deploy.
-    function gateway() external view returns (address);
-
-    // ---------------------------------------------------------------------
-    // Views — journal & batch state
-    // ---------------------------------------------------------------------
-
-    /// @notice Leaf `i` of the append-only journal (`keccak256(abi.encode(payload))`).
-    function journal(uint256 i) external view returns (bytes32);
-
-    /// @notice Total leaves journaled, anchored or not.
-    function journalLength() external view returns (uint256);
-
-    /// @notice Leaves journaled since the last anchored batch.
-    function pendingLeaves() external view returns (uint256);
-
-    /// @notice Dedup key is (author, uuid): an attacker must not be able to
-    /// squat a victim's predictable uuid with a payload of their own.
-    function usedUuid(address author, bytes32 uuid) external view returns (bool);
-
-    /// @notice Timestamp of an author's last accepted submission (rate limit).
-    function lastSubmit(address author) external view returns (uint256);
-
-    /// @notice When the current open batch window started (drives the deadline).
-    function batchOpenedAt() external view returns (uint256);
-
-    /// @notice Journal end offset of the last anchored batch — anchors freeze
-    /// `[lastAnchoredIndex, end)`; later appends land in the next window.
-    function lastAnchoredIndex() external view returns (uint256);
-
-    /// @notice Frozen Merkle root of batch `batchIndex`, derived by the contract.
-    function rootAt(uint256 batchIndex) external view returns (bytes32);
-
-    /// @notice Block at which batch `batchIndex` was anchored — the notary's
-    /// `K`-confirmation clock starts here.
-    function anchoredAtBlock(uint256 batchIndex) external view returns (uint256);
-
-    /// @notice Number of batches anchored so far (also the next batch index).
-    function anchoredBatches() external view returns (uint256);
 
     // ---------------------------------------------------------------------
     // Views — verification (reader path)

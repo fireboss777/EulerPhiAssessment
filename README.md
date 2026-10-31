@@ -300,8 +300,10 @@ dedup and batch window live in mappings precisely because those are
 **ERC-7201 namespaced storage.** Neither contract declares a state variable:
 each one's whole layout is a `Storage` struct on its interface, addressed at
 `keccak256(abi.encode(uint256(keccak256("eulerphi.storage.ArticleAnchor")) - 1)) & ~bytes32(uint256(0xff))`
-and reached through a single private `_getStorage()` pointer (the literal is
-frozen in the contract because inline assembly takes only number constants, and
+and reached through a single `_getStorage()` pointer — declared `virtual` and
+unimplemented by the inherited `HubGetters` read layer, pinned here as an
+`override` (the literal is frozen in the contract because inline assembly takes
+only number constants, and
 `test_storageLivesAtErc7201Slot` recomputes the formula from the namespace id
 and reads it raw — literal, id and contents must all agree). Payoffs: a future
 base contract or a field reordering cannot collide with this layout, because a
@@ -512,25 +514,35 @@ src/
   ArticleAnchor.sol        hub: submit, journal, batching, roots, CCIP both ways, UUPS
   SubmissionGateway.sol    L1: payable entry lane (no ecrecover) + monotonic notary receiver
   ArticleLib.sol           EIP-712 struct + typehash
+  HubGetters.sol           the hub's 14 read getters, implemented once (abstract:
+                           it only supplies `_getStorage()`, never the literal)
   HubStorageReader.sol     read-only facade over the HUB namespace (hub chain)
   GatewayStorageReader.sol read-only facade over the GATEWAY namespace (gateway chain)
   interfaces/
     IArticleAnchor.sol     hub's full public ABI, laid out in style-guide order
                            (events, then errors, then functions: actions first,
                            `view` getters last) + all 15 custom errors + every
-                           API NatSpec —
+                           API NatSpec; inherits `IHubGetters`, so the 14 read
+                           getters are declared there and never here —
                            ArticleAnchor inherits it, so the compiler keeps docs
                            and ABI in lockstep. Also owns the ERC-7201
                            `Storage` struct: the hub's ENTIRE state layout,
                            documented field by field. Every failure is a typed
                            error declared here, never a revert string: each
                            guard is written `require(condition, Err())`
+    IHubGetters.sol        the hub's 14 read getters — declared in ONE place and
+                           inherited by both consumers: `IArticleAnchor` (source)
+                           and `IHubStorageReader` (facade). Bodies differ by
+                           necessity: `HubGetters` does the `sload` (the account
+                           that owns the namespace), the facade does a typed
+                           `staticcall` (the EVM cannot read foreign storage)
     ISubmissionGateway.sol same for SubmissionGateway (10 typed errors + its
                            ERC-7201 `Storage` struct; it also fixes the 68-byte
                            `receiveRoot` wire format the hub encodes against)
-    IHubStorageReader.sol  hub facade API: bound target + 14 getters
-                           (9 scalars, 5 indexed) + `HubSnapshot`, and why a
-                           `Storage` struct cannot be returned
+    IHubStorageReader.sol  hub facade API: bound target + `HubSnapshot` + why a
+                           `Storage` struct cannot be returned; the 14 field
+                           getters (9 scalars, 5 indexed) are inherited from
+                           `IHubGetters`, not redeclared
     IGatewayStorageReader.sol
                            gateway facade API: bound target + 2 getters +
                            `GatewaySnapshot`
@@ -541,7 +553,6 @@ script/
   Anchor.s.sol Notarize.s.sol             permissionless keeper loops
   E2ESubmit.s.sol                         signs + submits against the live domain
   e2e-anvil.sh                            live end-to-end driver
-  style-audit.py                          style-guide order checks (see Code style)
 test/
   ArticleLib.t.sol Submit.t.sol Batch.t.sol MerkleDifferential.t.sol
   CCIP.t.sol Gateway.t.sol Upgrade.t.sol Gas.t.sol
@@ -558,9 +569,9 @@ soldeer.lock             dependency pins (solady v0.1.26, forge-std v1.17.0,
 Contracts follow the [official Solidity style
 guide](https://docs.soliditylang.org/en/v0.8.38/style-guide.html). The work is
 split in two: `forge fmt` owns whitespace, indentation and line wrapping (hard
-gate: `forge fmt --check`), and `python3 script/style-audit.py` owns the
-ordering rules a formatter cannot express — it prints violations and exits
-non-zero.
+gate: `forge fmt --check`), and the style guide itself owns the ordering rules a
+formatter cannot express — those are held by review against the guide, which is
+the single reference.
 
 | Rule | Where you see it |
 |---|---|

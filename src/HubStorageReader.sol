@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {IArticleAnchor} from "./interfaces/IArticleAnchor.sol";
+import {IHubGetters} from "./interfaces/IHubGetters.sol";
 import {IHubStorageReader} from "./interfaces/IHubStorageReader.sol";
 
 /// @title HubStorageReader — read-only facade over the hub's ERC-7201 namespace.
@@ -26,72 +27,72 @@ contract HubStorageReader is IHubStorageReader {
     // Hub namespace (`eulerphi.storage.ArticleAnchor`) — field getters
     // ---------------------------------------------------------------------
 
-    /// @inheritdoc IHubStorageReader
+    /// @inheritdoc IHubGetters
     function admin() external view returns (address) {
         return IArticleAnchor(hubTarget).admin();
     }
 
-    /// @inheritdoc IHubStorageReader
+    /// @inheritdoc IHubGetters
     function router() external view returns (address) {
         return IArticleAnchor(hubTarget).router();
     }
 
-    /// @inheritdoc IHubStorageReader
+    /// @inheritdoc IHubGetters
     function ethChainSelector() external view returns (uint64) {
         return IArticleAnchor(hubTarget).ethChainSelector();
     }
 
-    /// @inheritdoc IHubStorageReader
+    /// @inheritdoc IHubGetters
     function gateway() external view returns (address) {
         return IArticleAnchor(hubTarget).gateway();
     }
 
-    /// @inheritdoc IHubStorageReader
+    /// @inheritdoc IHubGetters
     function batchOpenedAt() external view returns (uint256) {
         return IArticleAnchor(hubTarget).batchOpenedAt();
     }
 
-    /// @inheritdoc IHubStorageReader
+    /// @inheritdoc IHubGetters
     function lastAnchoredIndex() external view returns (uint256) {
         return IArticleAnchor(hubTarget).lastAnchoredIndex();
     }
 
-    /// @inheritdoc IHubStorageReader
+    /// @inheritdoc IHubGetters
     function anchoredBatches() external view returns (uint256) {
         return IArticleAnchor(hubTarget).anchoredBatches();
     }
 
-    /// @inheritdoc IHubStorageReader
+    /// @inheritdoc IHubGetters
     function journalLength() external view returns (uint256) {
         return IArticleAnchor(hubTarget).journalLength();
     }
 
-    /// @inheritdoc IHubStorageReader
+    /// @inheritdoc IHubGetters
     function pendingLeaves() external view returns (uint256) {
         return IArticleAnchor(hubTarget).pendingLeaves();
     }
 
-    /// @inheritdoc IHubStorageReader
+    /// @inheritdoc IHubGetters
     function journal(uint256 i) external view returns (bytes32) {
         return IArticleAnchor(hubTarget).journal(i);
     }
 
-    /// @inheritdoc IHubStorageReader
+    /// @inheritdoc IHubGetters
     function usedUuid(address author, bytes32 uuid) external view returns (bool) {
         return IArticleAnchor(hubTarget).usedUuid(author, uuid);
     }
 
-    /// @inheritdoc IHubStorageReader
+    /// @inheritdoc IHubGetters
     function lastSubmit(address author) external view returns (uint256) {
         return IArticleAnchor(hubTarget).lastSubmit(author);
     }
 
-    /// @inheritdoc IHubStorageReader
+    /// @inheritdoc IHubGetters
     function rootAt(uint256 batchIndex) external view returns (bytes32) {
         return IArticleAnchor(hubTarget).rootAt(batchIndex);
     }
 
-    /// @inheritdoc IHubStorageReader
+    /// @inheritdoc IHubGetters
     function anchoredAtBlock(uint256 batchIndex) external view returns (uint256) {
         return IArticleAnchor(hubTarget).anchoredAtBlock(batchIndex);
     }

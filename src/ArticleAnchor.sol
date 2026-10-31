@@ -12,13 +12,14 @@ import {Client} from "./interfaces/Client.sol";
 import {IRouterClient} from "./interfaces/IRouterClient.sol";
 import {ISubmissionGateway} from "./interfaces/ISubmissionGateway.sol";
 import {IArticleAnchor} from "./interfaces/IArticleAnchor.sol";
+import {HubGetters} from "./HubGetters.sol";
 
 /// @title ArticleAnchor — the canonical journal & batch root registry (hub).
 /// @notice Every external entry point, getter, constant and event is declared
 /// and documented on `IArticleAnchor`, which this contract inherits — read the
 /// interface for the API. Only implementation-side members (constructor,
 /// modifiers, `internal` helpers) are documented here.
-contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable {
+contract ArticleAnchor is IArticleAnchor, HubGetters, Initializable, EIP712, UUPSUpgradeable {
     // ---------------------------------------------------------------------
     // Constants (see plan: batch policy)
     // ---------------------------------------------------------------------
@@ -150,68 +151,8 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     }
 
     // ---------------------------------------------------------------------
-    // Views
+    // Views — verification (the 14 state getters live in `HubGetters`)
     // ---------------------------------------------------------------------
-
-    /// @inheritdoc IArticleAnchor
-    function admin() external view returns (address) {
-        return _getStorage().admin;
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function router() external view returns (address) {
-        return _getStorage().router;
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function ethChainSelector() external view returns (uint64) {
-        return _getStorage().ethChainSelector;
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function gateway() external view returns (address) {
-        return _getStorage().gateway;
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function journal(uint256 i) external view returns (bytes32) {
-        return _getStorage().journal[i];
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function usedUuid(address author, bytes32 uuid) external view returns (bool) {
-        return _getStorage().usedUuid[author][uuid];
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function lastSubmit(address author) external view returns (uint256) {
-        return _getStorage().lastSubmit[author];
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function batchOpenedAt() external view returns (uint256) {
-        return _getStorage().batchOpenedAt;
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function lastAnchoredIndex() external view returns (uint256) {
-        return _getStorage().lastAnchoredIndex;
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function rootAt(uint256 batchIndex) external view returns (bytes32) {
-        return _getStorage().rootAt[batchIndex];
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function anchoredAtBlock(uint256 batchIndex) external view returns (uint256) {
-        return _getStorage().anchoredAtBlock[batchIndex];
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function anchoredBatches() external view returns (uint256) {
-        return _getStorage().anchoredBatches;
-    }
 
     /// @inheritdoc IArticleAnchor
     function verifyAgainstBatch(uint256 batchIndex, bytes32 leaf, bytes32[] calldata proof)
@@ -220,17 +161,6 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
         returns (bool)
     {
         return MerkleProofLib.verifyCalldata(proof, _getStorage().rootAt[batchIndex], leaf);
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function journalLength() external view returns (uint256) {
-        return _getStorage().journal.length;
-    }
-
-    /// @inheritdoc IArticleAnchor
-    function pendingLeaves() external view returns (uint256) {
-        Storage storage $ = _getStorage();
-        return $.journal.length - $.lastAnchoredIndex;
     }
 
     // ---------------------------------------------------------------------
@@ -302,9 +232,12 @@ contract ArticleAnchor is IArticleAnchor, Initializable, EIP712, UUPSUpgradeable
     }
 
     /// @dev The namespace pointer: every state access in this contract goes
-    /// through it. `private` on purpose — a derived implementation must declare
-    /// its OWN ERC-7201 namespace instead of silently extending this one.
-    function _getStorage() private pure returns (Storage storage $) {
+    /// through it. `HubGetters` declares it `virtual` and unimplemented, so the
+    /// literal belongs here — to the namespace owner — and not to the read
+    /// layer. `internal` is the least visibility that can `override`; a derived
+    /// implementation that needs a different layout must declare its OWN
+    /// namespace instead of silently extending this one.
+    function _getStorage() internal pure override returns (Storage storage $) {
         assembly {
             $.slot := _STORAGE_SLOT
         }
