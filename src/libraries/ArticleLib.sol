@@ -3,19 +3,6 @@ pragma solidity ^0.8.27;
 
 import { IArticleAnchor } from "../interfaces/IArticleAnchor.sol";
 
-/// @notice The universal article envelope: what a writer signs (EIP-712 struct)
-/// and what the hub journals as a leaf. Content lives off-chain (IPFS); only
-/// commitments (hashes) travel through this struct.
-struct ArticleSubmission {
-    address author;
-    bytes32 titleHash;
-    bytes32 bodyHash;
-    bytes32 cidHash;
-    bytes32 uuid;
-    uint256 timestamp;
-    uint256 deadline;
-}
-
 /// @notice The hub's shared vocabulary, in one place: the EIP-712 envelope and
 /// its typehash, the batch/submission/notary policy constants, and the
 /// ERC-7201 namespace (slot constant + pointer). Every constant here is
@@ -66,7 +53,7 @@ library ArticleLib {
     /// bumped, exactly as Solady's `EIP712` does it; the output is byte-for-byte
     /// the old one, pinned by `test_hashStructIsPinned`. `typehash` must be a
     /// local: a library constant is not visible inside assembly (solc 8198).
-    function hashStruct(ArticleSubmission memory payload) internal pure returns (bytes32 result) {
+    function hashStruct(IArticleAnchor.ArticleSubmission memory payload) internal pure returns (bytes32 result) {
         bytes32 typehash = TYPEHASH;
         assembly ("memory-safe") {
             let ptr := mload(0x40)

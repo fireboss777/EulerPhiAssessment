@@ -523,7 +523,7 @@ src/
   SubmissionGatewayGetters.sol
                            the gateway's 2 read getters, same shape
   libraries/
-    ArticleLib.sol         EIP-712 struct + typehash, the hub's ERC-7201 slot +
+    ArticleLib.sol         EIP-712 typehash + `hashStruct`, the hub's ERC-7201 slot +
                            namespace pointer (`getStorage()`), and every hub
                            policy constant as `public`: MIN_BATCH, MAX_BATCH,
                            BATCH_DEADLINE, RATE_LIMIT, HIGH_S_MAX, NOTARY_K,
@@ -532,13 +532,16 @@ src/
                            `public SUBMIT_GAS_LIMIT`; contracts hold none
   interfaces/
     IArticleAnchor.sol     hub's own public ABI, laid out in style-guide order
-                           (events, then errors, then functions: actions first,
-                           `view` last) + all 15 custom errors + every API
-                           NatSpec; the 14 read getters are NOT here — they
-                           live in `IArticleAnchorGetters` — and ArticleAnchor
-                           inherits both, so the compiler keeps docs and ABI in
-                           lockstep. Also owns the ERC-7201
-                           `Storage` struct: the hub's ENTIRE state layout,
+                           (type declarations, then events, then errors, then
+                           functions: actions first, `view` last) + all 15
+                           custom errors + every API NatSpec; the 14 read
+                           getters are NOT here — they live in
+                           `IArticleAnchorGetters` — and ArticleAnchor inherits
+                           both, so the compiler keeps docs and ABI in
+                           lockstep. Owns both type declarations: the
+                           `ArticleSubmission` envelope (what writers sign, what
+                           the journal stores as a leaf) and the ERC-7201
+                           `Storage` struct — the hub's ENTIRE state layout,
                            documented field by field. Every failure is a typed
                            error declared here, never a revert string: each
                            guard is written `require(condition, Err())`

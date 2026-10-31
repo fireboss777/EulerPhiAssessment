@@ -2,7 +2,7 @@
 pragma solidity ^0.8.27;
 
 import { ArticleAnchor } from "../../src/ArticleAnchor.sol";
-import { ArticleSubmission } from "../../src/libraries/ArticleLib.sol";
+import { IArticleAnchor } from "../../src/interfaces/IArticleAnchor.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { Test } from "forge-std/Test.sol";
 import { ECDSA } from "solady/utils/ECDSA.sol";
@@ -53,11 +53,11 @@ abstract contract ArticleTestBase is Test {
         );
     }
 
-    function _payloadFor(address author, uint256 salt) internal returns (ArticleSubmission memory) {
+    function _payloadFor(address author, uint256 salt) internal returns (IArticleAnchor.ArticleSubmission memory) {
         unchecked {
             uuidNonce++;
         }
-        return ArticleSubmission({
+        return IArticleAnchor.ArticleSubmission({
             author: author,
             titleHash: keccak256(abi.encode("title", salt)),
             bodyHash: keccak256(abi.encode("body", salt)),
@@ -68,7 +68,7 @@ abstract contract ArticleTestBase is Test {
         });
     }
 
-    function _submitAs(ArticleAnchor hub, ArticleSubmission memory p, uint256 key) internal {
+    function _submitAs(ArticleAnchor hub, IArticleAnchor.ArticleSubmission memory p, uint256 key) internal {
         hub.submitArticle(_leafOf(p), _signArticle(hub, p, key), p);
     }
 
@@ -82,7 +82,7 @@ abstract contract ArticleTestBase is Test {
     }
 
     /// @dev Domain separator reconstructed from the contract's own EIP-5267 answer.
-    function _articleDigest(address target, ArticleSubmission memory p) internal view returns (bytes32) {
+    function _articleDigest(address target, IArticleAnchor.ArticleSubmission memory p) internal view returns (bytes32) {
         (, string memory name, string memory version, uint256 chainId, address vc,,) = IEIP5267(target).eip712Domain();
         bytes32 ds = keccak256(
             abi.encode(
@@ -96,7 +96,7 @@ abstract contract ArticleTestBase is Test {
         return keccak256(abi.encodePacked(hex"1901", ds, _structHash(p)));
     }
 
-    function _signArticle(ArticleAnchor target, ArticleSubmission memory p, uint256 key)
+    function _signArticle(ArticleAnchor target, IArticleAnchor.ArticleSubmission memory p, uint256 key)
         internal
         view
         returns (bytes memory)
@@ -116,11 +116,11 @@ abstract contract ArticleTestBase is Test {
         }
     }
 
-    function _leafOf(ArticleSubmission memory p) internal pure returns (bytes32) {
+    function _leafOf(IArticleAnchor.ArticleSubmission memory p) internal pure returns (bytes32) {
         return keccak256(abi.encode(p));
     }
 
-    function _structHash(ArticleSubmission memory p) internal pure returns (bytes32) {
+    function _structHash(IArticleAnchor.ArticleSubmission memory p) internal pure returns (bytes32) {
         return keccak256(
             abi.encode(
                 keccak256(

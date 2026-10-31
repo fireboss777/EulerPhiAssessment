@@ -3,7 +3,6 @@ pragma solidity ^0.8.27;
 
 import { ArticleAnchor } from "../src/ArticleAnchor.sol";
 import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
-import { ArticleSubmission } from "../src/libraries/ArticleLib.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 import { ECDSA } from "solady/utils/ECDSA.sol";
 
@@ -13,7 +12,7 @@ contract SubmitTest is ArticleTestBase {
     function test_validSubmitAppendsJournal() public {
         ArticleAnchor hub = _deployHub();
         address author = vm.addr(AUTHOR_KEY);
-        ArticleSubmission memory p = _payloadFor(author, 1);
+        IArticleAnchor.ArticleSubmission memory p = _payloadFor(author, 1);
         bytes32 leaf = _leafOf(p);
         bytes memory sig = _signArticle(hub, p, AUTHOR_KEY);
 
@@ -32,7 +31,7 @@ contract SubmitTest is ArticleTestBase {
 
     function test_digestMismatchReverts() public {
         ArticleAnchor hub = _deployHub();
-        ArticleSubmission memory p = _payloadFor(vm.addr(AUTHOR_KEY), 2);
+        IArticleAnchor.ArticleSubmission memory p = _payloadFor(vm.addr(AUTHOR_KEY), 2);
         bytes memory sig = _signArticle(hub, p, AUTHOR_KEY);
         bytes32 wrongLeaf = bytes32(uint256(_leafOf(p)) ^ 1);
 
@@ -42,7 +41,7 @@ contract SubmitTest is ArticleTestBase {
 
     function test_lowSEnforced() public {
         ArticleAnchor hub = _deployHub();
-        ArticleSubmission memory p = _payloadFor(vm.addr(AUTHOR_KEY), 3);
+        IArticleAnchor.ArticleSubmission memory p = _payloadFor(vm.addr(AUTHOR_KEY), 3);
         bytes memory good = _signArticle(hub, p, AUTHOR_KEY);
         bytes32 r;
         bytes32 s;
@@ -61,7 +60,7 @@ contract SubmitTest is ArticleTestBase {
 
     function test_expiredDeadlineReverts() public {
         ArticleAnchor hub = _deployHub();
-        ArticleSubmission memory p = _payloadFor(vm.addr(AUTHOR_KEY), 4);
+        IArticleAnchor.ArticleSubmission memory p = _payloadFor(vm.addr(AUTHOR_KEY), 4);
         bytes memory sig = _signArticle(hub, p, AUTHOR_KEY);
         vm.warp(p.deadline + 1);
 
@@ -73,7 +72,7 @@ contract SubmitTest is ArticleTestBase {
         ArticleAnchor hub = _deployHub();
         address author = vm.addr(AUTHOR_KEY);
         _submitAs(hub, _payloadFor(author, 5), AUTHOR_KEY);
-        ArticleSubmission memory second = _payloadFor(author, 6);
+        IArticleAnchor.ArticleSubmission memory second = _payloadFor(author, 6);
         bytes memory sig2 = _signArticle(hub, second, AUTHOR_KEY);
 
         vm.expectRevert(IArticleAnchor.RateLimited.selector);
@@ -83,7 +82,7 @@ contract SubmitTest is ArticleTestBase {
     function test_duplicateUuidReverts() public {
         ArticleAnchor hub = _deployHub();
         address author = vm.addr(AUTHOR_KEY);
-        ArticleSubmission memory p = _payloadFor(author, 7);
+        IArticleAnchor.ArticleSubmission memory p = _payloadFor(author, 7);
         _submitAs(hub, p, AUTHOR_KEY);
         bytes memory sig = _signArticle(hub, p, AUTHOR_KEY);
         vm.warp(block.timestamp + 1 hours); // clear the per-author rate limit
@@ -95,7 +94,7 @@ contract SubmitTest is ArticleTestBase {
     function test_thirdPartySubmitWithAuthorSigPasses() public {
         ArticleAnchor hub = _deployHub();
         address author = vm.addr(AUTHOR_KEY);
-        ArticleSubmission memory p = _payloadFor(author, 8);
+        IArticleAnchor.ArticleSubmission memory p = _payloadFor(author, 8);
         bytes32 leaf = _leafOf(p);
         bytes memory sig = _signArticle(hub, p, AUTHOR_KEY);
 
@@ -110,7 +109,7 @@ contract SubmitTest is ArticleTestBase {
 
     function test_forgedByAuthorSigReverts() public {
         ArticleAnchor hub = _deployHub();
-        ArticleSubmission memory p = _payloadFor(vm.addr(AUTHOR_KEY), 9);
+        IArticleAnchor.ArticleSubmission memory p = _payloadFor(vm.addr(AUTHOR_KEY), 9);
         bytes memory forged = _signArticle(hub, p, FORGER_KEY);
 
         vm.expectRevert(IArticleAnchor.NotAuthor.selector);
@@ -123,7 +122,7 @@ contract SubmitTest is ArticleTestBase {
     function test_payloadSignedForAnotherDomainReverts() public {
         ArticleAnchor hub = _deployHub();
         ArticleAnchor otherHub = _deployHub();
-        ArticleSubmission memory p = _payloadFor(vm.addr(AUTHOR_KEY), 10);
+        IArticleAnchor.ArticleSubmission memory p = _payloadFor(vm.addr(AUTHOR_KEY), 10);
         bytes32 leaf = _leafOf(p);
 
         bytes memory foreignContractSig = _signArticle(otherHub, p, AUTHOR_KEY);
@@ -146,11 +145,11 @@ contract SubmitTest is ArticleTestBase {
         ArticleAnchor hub = _deployHub();
         bytes32 predicted = keccak256("predictable content id");
 
-        ArticleSubmission memory squat = _payloadFor(vm.addr(FORGER_KEY), 21);
+        IArticleAnchor.ArticleSubmission memory squat = _payloadFor(vm.addr(FORGER_KEY), 21);
         squat.uuid = predicted;
         _submitAs(hub, squat, FORGER_KEY); // attacker front-runs the uuid
 
-        ArticleSubmission memory victim = _payloadFor(vm.addr(AUTHOR_KEY), 22);
+        IArticleAnchor.ArticleSubmission memory victim = _payloadFor(vm.addr(AUTHOR_KEY), 22);
         victim.uuid = predicted;
         _submitAs(hub, victim, AUTHOR_KEY); // must NOT revert "dup"
 
@@ -162,12 +161,12 @@ contract SubmitTest is ArticleTestBase {
         ArticleAnchor hub = _deployHub();
         address author = vm.addr(AUTHOR_KEY);
 
-        ArticleSubmission memory p = _payloadFor(author, 23);
+        IArticleAnchor.ArticleSubmission memory p = _payloadFor(author, 23);
         p.uuid = keccak256("one shot");
         _submitAs(hub, p, AUTHOR_KEY);
         vm.warp(block.timestamp + 1 hours);
 
-        ArticleSubmission memory twin = _payloadFor(author, 24);
+        IArticleAnchor.ArticleSubmission memory twin = _payloadFor(author, 24);
         twin.uuid = keccak256("one shot"); // same uuid, different content
         bytes memory sig = _signArticle(hub, twin, AUTHOR_KEY);
 

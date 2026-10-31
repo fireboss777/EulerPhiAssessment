@@ -5,7 +5,7 @@ import { ArticleAnchor } from "../src/ArticleAnchor.sol";
 import { Client } from "../src/interfaces/Client.sol";
 import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
 import { ISubmissionGateway } from "../src/interfaces/ISubmissionGateway.sol";
-import { ArticleLib, ArticleSubmission } from "../src/libraries/ArticleLib.sol";
+import { ArticleLib } from "../src/libraries/ArticleLib.sol";
 import { MockRouter } from "./mocks/MockRouter.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 
@@ -30,7 +30,7 @@ contract CCIPTest is ArticleTestBase {
     // ------------------------------------------------------------------
 
     function test_whitelistedSourceSubmits() public {
-        (bytes32 leaf, bytes memory sig, ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 1);
+        (bytes32 leaf, bytes memory sig, IArticleAnchor.ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 1);
 
         mock.deliver(address(hub), _inbound(TEST_SEL, GATEWAY, leaf, sig, p));
 
@@ -39,7 +39,7 @@ contract CCIPTest is ArticleTestBase {
     }
 
     function test_wrongChainSelectorReverts() public {
-        (bytes32 leaf, bytes memory sig, ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 2);
+        (bytes32 leaf, bytes memory sig, IArticleAnchor.ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 2);
         Client.Any2EVMMessage memory m = _inbound(TEST_SEL + 1, GATEWAY, leaf, sig, p);
 
         vm.expectRevert(IArticleAnchor.BadChain.selector);
@@ -47,7 +47,7 @@ contract CCIPTest is ArticleTestBase {
     }
 
     function test_wrongSenderReverts() public {
-        (bytes32 leaf, bytes memory sig, ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 3);
+        (bytes32 leaf, bytes memory sig, IArticleAnchor.ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 3);
         Client.Any2EVMMessage memory m = _inbound(TEST_SEL, FOREIGN_SENDER, leaf, sig, p);
 
         vm.expectRevert(IArticleAnchor.BadSender.selector);
@@ -55,7 +55,7 @@ contract CCIPTest is ArticleTestBase {
     }
 
     function test_replayAcrossLanesReverts() public {
-        (bytes32 leaf, bytes memory sig, ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 4);
+        (bytes32 leaf, bytes memory sig, IArticleAnchor.ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 4);
 
         // Lane 1: direct public call on the hub.
         hub.submitArticle(leaf, sig, p);
@@ -71,7 +71,7 @@ contract CCIPTest is ArticleTestBase {
     }
 
     function test_ccipReceiveForwards() public {
-        (bytes32 leaf, bytes memory sig, ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 5);
+        (bytes32 leaf, bytes memory sig, IArticleAnchor.ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 5);
 
         // The standard IAny2EVMMessageReceiver entry (what a real router calls).
         mock.deliverViaCcipReceive(address(hub), _inbound(TEST_SEL, GATEWAY, leaf, sig, p));
@@ -83,7 +83,7 @@ contract CCIPTest is ArticleTestBase {
     /// the only one a direct (non-CCIP) caller faces. Bypassing the router
     /// must die here even with a perfectly valid chain/sender tuple.
     function test_directConsumeRejected() public {
-        (bytes32 leaf, bytes memory sig, ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 6);
+        (bytes32 leaf, bytes memory sig, IArticleAnchor.ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 6);
         Client.Any2EVMMessage memory m = _inbound(TEST_SEL, GATEWAY, leaf, sig, p);
 
         vm.expectRevert(IArticleAnchor.NotRouter.selector);
@@ -128,18 +128,20 @@ contract CCIPTest is ArticleTestBase {
 
     function _signedLeaf(uint256 key, uint256 salt)
         internal
-        returns (bytes32 leaf, bytes memory sig, ArticleSubmission memory p)
+        returns (bytes32 leaf, bytes memory sig, IArticleAnchor.ArticleSubmission memory p)
     {
         p = _payloadFor(vm.addr(key), salt);
         leaf = _leafOf(p);
         sig = _signArticle(hub, p, key);
     }
 
-    function _inbound(uint64 sel, address sender, bytes32 leaf, bytes memory sig, ArticleSubmission memory p)
-        internal
-        pure
-        returns (Client.Any2EVMMessage memory)
-    {
+    function _inbound(
+        uint64 sel,
+        address sender,
+        bytes32 leaf,
+        bytes memory sig,
+        IArticleAnchor.ArticleSubmission memory p
+    ) internal pure returns (Client.Any2EVMMessage memory) {
         return Client.Any2EVMMessage({
             messageId: keccak256(abi.encode(leaf, sender)),
             sourceChainSelector: sel,

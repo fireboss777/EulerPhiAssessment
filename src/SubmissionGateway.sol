@@ -4,9 +4,9 @@ pragma solidity ^0.8.27;
 import { SubmissionGatewayGetters } from "./SubmissionGatewayGetters.sol";
 import { Client } from "./interfaces/Client.sol";
 import { IAny2EVMMessageReceiver } from "./interfaces/IAny2EVMMessageReceiver.sol";
+import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
 import { IRouterClient } from "./interfaces/IRouterClient.sol";
 import { ISubmissionGateway } from "./interfaces/ISubmissionGateway.sol";
-import { ArticleSubmission } from "./libraries/ArticleLib.sol";
 import { GatewayLib } from "./libraries/GatewayLib.sol";
 
 /// @title SubmissionGateway — the L1 endpoint (two roles, both pinned).
@@ -35,7 +35,7 @@ contract SubmissionGateway is ISubmissionGateway, SubmissionGatewayGetters, IAny
     // ------------------------------------------------------------------
 
     /// @inheritdoc ISubmissionGateway
-    function submitArticle(bytes32 leafDigest, bytes calldata sig, ArticleSubmission calldata payload)
+    function submitArticle(bytes32 leafDigest, bytes calldata sig, IArticleAnchor.ArticleSubmission calldata payload)
         external
         payable
     {

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import { ArticleSubmission } from "../libraries/ArticleLib.sol";
 import { Client } from "./Client.sol";
+import { IArticleAnchor } from "./IArticleAnchor.sol";
 
 /// @title SubmissionGateway — the L1 endpoint (two roles, both pinned).
 /// @notice Public ABI of the gateway, implemented by
@@ -99,7 +99,9 @@ interface ISubmissionGateway {
     /// @param leafDigest The commitment that will be journaled.
     /// @param sig EIP-712 signature over `ArticleSubmission`, forwarded byte-identical.
     /// @param payload The typed article envelope (hashes only — content stays off-chain).
-    function submitArticle(bytes32 leafDigest, bytes calldata sig, ArticleSubmission calldata payload) external payable;
+    function submitArticle(bytes32 leafDigest, bytes calldata sig, IArticleAnchor.ArticleSubmission calldata payload)
+        external
+        payable;
 
     // ---------------------------------------------------------------------
     // Notary receiver: hub -> gateway (roots land here)

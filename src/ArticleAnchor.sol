@@ -6,7 +6,7 @@ import { Client } from "./interfaces/Client.sol";
 import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
 import { IRouterClient } from "./interfaces/IRouterClient.sol";
 import { ISubmissionGateway } from "./interfaces/ISubmissionGateway.sol";
-import { ArticleLib, ArticleSubmission } from "./libraries/ArticleLib.sol";
+import { ArticleLib } from "./libraries/ArticleLib.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import { ECDSA } from "solady/utils/ECDSA.sol";

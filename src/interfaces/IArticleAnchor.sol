@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import { ArticleSubmission } from "../libraries/ArticleLib.sol";
 import { Client } from "./Client.sol";
 
 /// @title ArticleAnchor — the canonical journal & batch root registry (hub).
@@ -71,6 +70,19 @@ interface IArticleAnchor {
         mapping(uint256 => uint256) anchoredAtBlock;
         /// @dev Slot 10.
         uint256 anchoredBatches;
+    }
+
+    /// @notice The universal article envelope: what a writer signs (EIP-712 struct)
+    /// and what the hub journals as a leaf. Content lives off-chain (IPFS); only
+    /// commitments (hashes) travel through this struct.
+    struct ArticleSubmission {
+        address author;
+        bytes32 titleHash;
+        bytes32 bodyHash;
+        bytes32 cidHash;
+        bytes32 uuid;
+        uint256 timestamp;
+        uint256 deadline;
     }
 
     // ---------------------------------------------------------------------

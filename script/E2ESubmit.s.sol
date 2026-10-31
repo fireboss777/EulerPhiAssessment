@@ -2,7 +2,8 @@
 pragma solidity ^0.8.27;
 
 import { ArticleAnchor } from "../src/ArticleAnchor.sol";
-import { ArticleLib, ArticleSubmission } from "../src/libraries/ArticleLib.sol";
+import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
+import { ArticleLib } from "../src/libraries/ArticleLib.sol";
 import { Script } from "forge-std/Script.sol";
 import { console } from "forge-std/console.sol";
 
@@ -24,7 +25,7 @@ contract E2ESubmit is Script {
         uint256 authorKey = vm.envUint("ARTICLE_AUTHOR_KEY");
         address author = vm.addr(authorKey);
 
-        ArticleSubmission memory p = ArticleSubmission({
+        IArticleAnchor.ArticleSubmission memory p = IArticleAnchor.ArticleSubmission({
             author: author,
             titleHash: keccak256("e2e title"),
             bodyHash: keccak256("e2e body"),

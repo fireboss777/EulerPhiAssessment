@@ -3,7 +3,8 @@ pragma solidity ^0.8.27;
 
 import { ArticleAnchor } from "../src/ArticleAnchor.sol";
 import { SubmissionGateway } from "../src/SubmissionGateway.sol";
-import { ArticleLib, ArticleSubmission } from "../src/libraries/ArticleLib.sol";
+import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
+import { ArticleLib } from "../src/libraries/ArticleLib.sol";
 import { MockRouter } from "./mocks/MockRouter.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 import { console } from "forge-std/console.sol";
@@ -92,7 +93,7 @@ contract GasTest is ArticleTestBase {
         SubmissionGateway gw = new SubmissionGateway(address(mock), address(hub), SEL);
         vm.deal(address(this), 1 ether);
 
-        ArticleSubmission memory p = _payloadFor(vm.addr(KEY), 3);
+        IArticleAnchor.ArticleSubmission memory p = _payloadFor(vm.addr(KEY), 3);
         bytes memory sig = _signArticle(hub, p, KEY);
         uint256 g0 = gasleft();
         gw.submitArticle{ value: mock.fee() }(_leafOf(p), sig, p);
@@ -110,7 +111,7 @@ contract GasTest is ArticleTestBase {
 
     function _measuredSubmit(ArticleAnchor hub, uint256 salt, uint256 key)
         internal
-        returns (uint256 used, ArticleSubmission memory p)
+        returns (uint256 used, IArticleAnchor.ArticleSubmission memory p)
     {
         p = _payloadFor(vm.addr(key), salt);
         bytes memory sig = _signArticle(hub, p, key);

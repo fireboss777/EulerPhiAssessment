@@ -4,8 +4,9 @@ pragma solidity ^0.8.27;
 import { ArticleAnchor } from "../src/ArticleAnchor.sol";
 import { SubmissionGateway } from "../src/SubmissionGateway.sol";
 import { Client } from "../src/interfaces/Client.sol";
+import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
 import { ISubmissionGateway } from "../src/interfaces/ISubmissionGateway.sol";
-import { ArticleLib, ArticleSubmission } from "../src/libraries/ArticleLib.sol";
+import { ArticleLib } from "../src/libraries/ArticleLib.sol";
 import { MockRouter } from "./mocks/MockRouter.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 
@@ -29,7 +30,7 @@ contract GatewayTest is ArticleTestBase {
     // ------------------------------------------------------------------
 
     function test_gatewayForwardsByteIdenticalCalldata() public {
-        (ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
+        (IArticleAnchor.ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
         bytes32 leaf = _leafOf(p);
         vm.deal(address(this), 1 ether);
 
@@ -40,15 +41,15 @@ contract GatewayTest is ArticleTestBase {
         assertEq(mock.lastValue(), mock.fee(), "exactly the fee forwarded");
         assertEq(mock.lastData(), abi.encode(leaf, sig, p), "bytes identical in transit");
 
-        (bytes32 leaf2, bytes memory sig2, ArticleSubmission memory p2) =
-            abi.decode(mock.lastData(), (bytes32, bytes, ArticleSubmission));
+        (bytes32 leaf2, bytes memory sig2, IArticleAnchor.ArticleSubmission memory p2) =
+            abi.decode(mock.lastData(), (bytes32, bytes, IArticleAnchor.ArticleSubmission));
         assertEq(leaf2, leaf, "leaf roundtrip");
         assertEq(sig2, sig, "sig roundtrip");
         assertEq(keccak256(abi.encode(p2)), keccak256(abi.encode(p)), "payload roundtrip");
     }
 
     function test_gatewayDigestMismatchReverts() public {
-        (ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
+        (IArticleAnchor.ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
         bytes32 wrongLeaf = bytes32(uint256(_leafOf(p)) ^ 1);
 
         vm.expectRevert(ISubmissionGateway.DigestMismatch.selector);
@@ -56,7 +57,7 @@ contract GatewayTest is ArticleTestBase {
     }
 
     function test_insufficientFeeReverts() public {
-        (ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
+        (IArticleAnchor.ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
         vm.deal(address(this), 1 ether);
 
         vm.expectRevert(ISubmissionGateway.InsufficientFee.selector);
@@ -64,7 +65,7 @@ contract GatewayTest is ArticleTestBase {
     }
 
     function test_excessRefunded() public {
-        (ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
+        (IArticleAnchor.ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
         vm.deal(address(this), 1 ether);
 
         gw.submitArticle{ value: 0.03 ether }(_leafOf(p), sig, p);
@@ -126,7 +127,7 @@ contract GatewayTest is ArticleTestBase {
         assertEq(hub.gateway(), address(gw), "wiring");
 
         uint256 key = AUTHOR_KEY;
-        ArticleSubmission memory p = _payloadFor(vm.addr(key), 12);
+        IArticleAnchor.ArticleSubmission memory p = _payloadFor(vm.addr(key), 12);
         bytes32 leaf = _leafOf(p);
         bytes memory sig = _signArticle(hub, p, key);
         vm.deal(address(this), 1 ether);
@@ -193,7 +194,7 @@ contract GatewayTest is ArticleTestBase {
 
     /// @dev Gateway lane never verifies signatures (decision 1a) — sig bytes
     /// here are payload bytes, byte-identity is what's under test.
-    function _payloadAndSig() internal returns (ArticleSubmission memory p, bytes memory sig) {
+    function _payloadAndSig() internal returns (IArticleAnchor.ArticleSubmission memory p, bytes memory sig) {
         p = _payloadFor(vm.addr(AUTHOR_KEY), 11);
         sig = abi.encodePacked(bytes32(uint256(0xAA)), bytes32(uint256(0xBB)), uint8(27));
     }

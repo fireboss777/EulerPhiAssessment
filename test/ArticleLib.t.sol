@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import { ArticleLib, ArticleSubmission } from "../src/libraries/ArticleLib.sol";
+import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
+import { ArticleLib } from "../src/libraries/ArticleLib.sol";
 import { AuthorGate } from "./mocks/AuthorGate.sol";
 import { Test } from "forge-std/Test.sol";
 import { ECDSA } from "solady/utils/ECDSA.sol";
@@ -15,7 +16,7 @@ contract ArticleLibTest is Test {
     uint256 internal constant FORGER_KEY = 0xA11CE;
 
     function test_forgedByAuthorSigReverts() public {
-        ArticleSubmission memory p = _pinnedPayload();
+        IArticleAnchor.ArticleSubmission memory p = _pinnedPayload();
         bytes32 digest = ArticleLib.hashStruct(p);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(FORGER_KEY, digest);
         bytes memory forgedSig = abi.encodePacked(r, s, v);
@@ -26,7 +27,7 @@ contract ArticleLibTest is Test {
     }
 
     function test_genuineAuthorSigAccepted() public {
-        ArticleSubmission memory p = _pinnedPayload();
+        IArticleAnchor.ArticleSubmission memory p = _pinnedPayload();
         bytes32 digest = ArticleLib.hashStruct(p);
         uint256 authorKey = uint256(uint160(AUTHOR)) ^ 1; // deterministic key; identity is the recovered address
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(authorKey, digest);
@@ -41,8 +42,8 @@ contract ArticleLibTest is Test {
         assertEq(ArticleLib.hashStruct(_pinnedPayload()), HASHSTRUCT_PIN, "struct hash drifted");
     }
 
-    function _pinnedPayload() internal pure returns (ArticleSubmission memory) {
-        return ArticleSubmission({
+    function _pinnedPayload() internal pure returns (IArticleAnchor.ArticleSubmission memory) {
+        return IArticleAnchor.ArticleSubmission({
             author: AUTHOR,
             titleHash: bytes32(uint256(1)),
             bodyHash: bytes32(uint256(2)),
