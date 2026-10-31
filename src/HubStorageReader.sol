@@ -2,104 +2,101 @@
 pragma solidity ^0.8.27;
 
 import {IArticleAnchor} from "./interfaces/IArticleAnchor.sol";
-import {ISubmissionGateway} from "./interfaces/ISubmissionGateway.sol";
-import {IStorageReader} from "./interfaces/IStorageReader.sol";
+import {IHubStorageReader} from "./interfaces/IHubStorageReader.sol";
 
-/// @title StorageReader — read-only facade over both namespaces of this project.
-/// @notice See `IStorageReader` for the API and for why it exists (a `Storage`
-/// struct holds mappings, so it cannot be returned — solc 4103).
-/// @dev Stateless: two `immutable` targets, zero storage variables, so it needs
-/// no namespace of its own. Each getter is a typed `staticcall` into the bound
-/// target's own getters, which the compiler checks against `IArticleAnchor` /
-/// `ISubmissionGateway` — so this file cannot drift from the layouts it
-/// mirrors: if a name or signature changes upstream, it stops compiling here.
-contract StorageReader is IStorageReader {
-    /// @inheritdoc IStorageReader
+/// @title HubStorageReader — read-only facade over the hub's ERC-7201 namespace.
+/// @notice See `IHubStorageReader` for the API, for why it exists (a `Storage`
+/// struct holds mappings, so it cannot be returned — solc 4103) and for the
+/// one-target-one-chain rule.
+/// @dev Stateless: one `immutable` target, zero storage variables, so it needs
+/// no namespace of its own. Every getter is a typed `staticcall` into the
+/// hub's own getters, which the compiler checks against `IArticleAnchor` — this
+/// file cannot drift from the layout it mirrors, and it reads only what lives
+/// on ITS chain.
+contract HubStorageReader is IHubStorageReader {
+    /// @inheritdoc IHubStorageReader
     address public immutable hubTarget;
-    /// @inheritdoc IStorageReader
-    address public immutable gatewayTarget;
 
-    constructor(address hubTarget_, address gatewayTarget_) {
-        if (hubTarget_ == address(0) || gatewayTarget_ == address(0)) revert ZeroTarget();
+    constructor(address hubTarget_) {
+        if (hubTarget_ == address(0)) revert ZeroTarget();
         hubTarget = hubTarget_;
-        gatewayTarget = gatewayTarget_;
     }
 
     // ---------------------------------------------------------------------
     // Hub namespace (`eulerphi.storage.ArticleAnchor`) — field getters
     // ---------------------------------------------------------------------
 
-    /// @inheritdoc IStorageReader
+    /// @inheritdoc IHubStorageReader
     function admin() external view returns (address) {
         return IArticleAnchor(hubTarget).admin();
     }
 
-    /// @inheritdoc IStorageReader
+    /// @inheritdoc IHubStorageReader
     function router() external view returns (address) {
         return IArticleAnchor(hubTarget).router();
     }
 
-    /// @inheritdoc IStorageReader
+    /// @inheritdoc IHubStorageReader
     function ethChainSelector() external view returns (uint64) {
         return IArticleAnchor(hubTarget).ethChainSelector();
     }
 
-    /// @inheritdoc IStorageReader
+    /// @inheritdoc IHubStorageReader
     function gateway() external view returns (address) {
         return IArticleAnchor(hubTarget).gateway();
     }
 
-    /// @inheritdoc IStorageReader
+    /// @inheritdoc IHubStorageReader
     function batchOpenedAt() external view returns (uint256) {
         return IArticleAnchor(hubTarget).batchOpenedAt();
     }
 
-    /// @inheritdoc IStorageReader
+    /// @inheritdoc IHubStorageReader
     function lastAnchoredIndex() external view returns (uint256) {
         return IArticleAnchor(hubTarget).lastAnchoredIndex();
     }
 
-    /// @inheritdoc IStorageReader
+    /// @inheritdoc IHubStorageReader
     function anchoredBatches() external view returns (uint256) {
         return IArticleAnchor(hubTarget).anchoredBatches();
     }
 
-    /// @inheritdoc IStorageReader
+    /// @inheritdoc IHubStorageReader
     function journalLength() external view returns (uint256) {
         return IArticleAnchor(hubTarget).journalLength();
     }
 
-    /// @inheritdoc IStorageReader
+    /// @inheritdoc IHubStorageReader
     function pendingLeaves() external view returns (uint256) {
         return IArticleAnchor(hubTarget).pendingLeaves();
     }
 
-    /// @inheritdoc IStorageReader
+    /// @inheritdoc IHubStorageReader
     function journal(uint256 i) external view returns (bytes32) {
         return IArticleAnchor(hubTarget).journal(i);
     }
 
-    /// @inheritdoc IStorageReader
+    /// @inheritdoc IHubStorageReader
     function usedUuid(address author, bytes32 uuid) external view returns (bool) {
         return IArticleAnchor(hubTarget).usedUuid(author, uuid);
     }
 
-    /// @inheritdoc IStorageReader
+    /// @inheritdoc IHubStorageReader
     function lastSubmit(address author) external view returns (uint256) {
         return IArticleAnchor(hubTarget).lastSubmit(author);
     }
 
-    /// @inheritdoc IStorageReader
+    /// @inheritdoc IHubStorageReader
     function rootAt(uint256 batchIndex) external view returns (bytes32) {
         return IArticleAnchor(hubTarget).rootAt(batchIndex);
     }
 
-    /// @inheritdoc IStorageReader
+    /// @inheritdoc IHubStorageReader
     function anchoredAtBlock(uint256 batchIndex) external view returns (uint256) {
         return IArticleAnchor(hubTarget).anchoredAtBlock(batchIndex);
     }
 
-    /// @inheritdoc IStorageReader
+    /// @inheritdoc IHubStorageReader
     function hubSnapshot() external view returns (HubSnapshot memory out) {
         IArticleAnchor h = IArticleAnchor(hubTarget);
         out.admin = h.admin();
@@ -111,24 +108,5 @@ contract StorageReader is IStorageReader {
         out.anchoredBatches = h.anchoredBatches();
         out.journalLength = h.journalLength();
         out.pendingLeaves = h.pendingLeaves();
-    }
-
-    // ---------------------------------------------------------------------
-    // Gateway namespace (`eulerphi.storage.SubmissionGateway`) — field getters
-    // ---------------------------------------------------------------------
-
-    /// @inheritdoc IStorageReader
-    function nextBatch() external view returns (uint256) {
-        return ISubmissionGateway(gatewayTarget).nextBatch();
-    }
-
-    /// @inheritdoc IStorageReader
-    function notarizedRoot(uint256 batchIndex) external view returns (bytes32) {
-        return ISubmissionGateway(gatewayTarget).notarizedRoot(batchIndex);
-    }
-
-    /// @inheritdoc IStorageReader
-    function gatewaySnapshot() external view returns (GatewaySnapshot memory out) {
-        out.nextBatch = ISubmissionGateway(gatewayTarget).nextBatch();
     }
 }
