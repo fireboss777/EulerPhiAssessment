@@ -14,11 +14,10 @@ contract MockRouter {
     bytes public lastData;
     address public lastReceiver;
     uint256 public lastValue;
-    bytes public lastExtraArgs;
     bytes32 public lastMessageId;
-    /// @dev Capturing `lastData`/`lastExtraArgs` costs ~20k per stored word —
-    /// ~500k for a submission payload. GasTest disables it so the measured
-    /// gateway cost is the gateway's own work, not the test double's forensics.
+    /// @dev Capturing `lastData` costs ~20k per stored word — ~500k for a
+    /// submission payload. GasTest disables it so the measured gateway cost is
+    /// the gateway's own work, not the test double's forensics.
     bool public capture = true;
 
     function setCapture(bool capture_) external {
@@ -38,7 +37,6 @@ contract MockRouter {
         lastValue = msg.value;
         lastMessageId = messageId;
         lastData = message.data;
-        lastExtraArgs = message.extraArgs;
         return messageId;
     }
 

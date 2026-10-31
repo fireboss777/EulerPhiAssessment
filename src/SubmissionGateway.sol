@@ -1,22 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import { SubmissionGatewayGetters } from "./SubmissionGatewayGetters.sol";
 import { Client } from "./interfaces/Client.sol";
-import { IAny2EVMMessageReceiver } from "./interfaces/IAny2EVMMessageReceiver.sol";
 import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
 import { IRouterClient } from "./interfaces/IRouterClient.sol";
 import { ISubmissionGateway } from "./interfaces/ISubmissionGateway.sol";
 import { GatewayLib } from "./libraries/GatewayLib.sol";
 
-/// @title SubmissionGateway — the L1 endpoint (two roles, both pinned).
-/// @notice Every external entry point, getter, constant and event is declared
-/// and documented on `ISubmissionGateway`, which this contract inherits — read
+/// @title SubmissionGateway — the L1 endpoint (paid entry lane, headless).
+/// @notice Every external entry point, constant and event is declared and
+/// documented on `ISubmissionGateway`, which this contract inherits — read
 /// the interface for the API (including the paid-lane / no-ecrecover design
-/// notes). Its ERC-7201 namespace (slot constant + pointer) lives in
-/// `GatewayLib`, so this contract declares NO state variable and NO constant.
+/// notes). Its fee-lane policy lives in `GatewayLib`; this contract holds
+/// three immutables, NO storage slot and NO constant of its own.
 /// Only implementation-side members are documented here.
-contract SubmissionGateway is ISubmissionGateway, SubmissionGatewayGetters, IAny2EVMMessageReceiver {
+contract SubmissionGateway is ISubmissionGateway {
     /// @inheritdoc ISubmissionGateway
     address public immutable ROUTER;
     /// @inheritdoc ISubmissionGateway
@@ -63,45 +61,5 @@ contract SubmissionGateway is ISubmissionGateway, SubmissionGatewayGetters, IAny
             (bool ok,) = msg.sender.call{ value: excess }("");
             require(ok, RefundFailed());
         }
-    }
-
-    // ------------------------------------------------------------------
-    // Notary receiver: hub -> gateway (roots land here)
-    // ------------------------------------------------------------------
-
-    /// @dev Inherits its documentation from `ISubmissionGateway`, which
-    /// redeclares it alongside Chainlink's `IAny2EVMMessageReceiver` — hence
-    /// the explicit override list.
-    /// @inheritdoc ISubmissionGateway
-    function ccipReceive(Client.Any2EVMMessage calldata message)
-        external
-        override(ISubmissionGateway, IAny2EVMMessageReceiver)
-    {
-        require(message.sourceChainSelector == BASE_CHAIN_SELECTOR, BadChain());
-        require(abi.decode(message.sender, (address)) == HUB, BadSender());
-        _applyNotaryPayload(message.data);
-    }
-
-    /// @inheritdoc ISubmissionGateway
-    function receiveRoot(uint256 batchIndex, bytes32 root) public {
-        require(msg.sender == address(ROUTER), NotRouter());
-        Storage storage $ = GatewayLib.getStorage();
-        require(batchIndex == $.nextBatch, OutOfOrder());
-
-        $.notarizedRoot[batchIndex] = root;
-        $.nextBatch = batchIndex + 1;
-        emit RootNotarized(batchIndex, root);
-    }
-
-    /// @dev The hub encodes `receiveRoot` with `abi.encodeCall` — 4-byte
-    /// selector + the two encoded words (68 bytes). Length AND selector are
-    /// checked before decoding, so a payload built for any other function can
-    /// never be reinterpreted as `(batchIndex, root)`. Verified end-to-end by
-    /// `test_notarizeRoundTripIntoGateway` (hub encode -> gateway decode).
-    function _applyNotaryPayload(bytes calldata data) internal {
-        require(data.length == 68, BadPayloadLength());
-        require(bytes4(data[0:4]) == ISubmissionGateway.receiveRoot.selector, BadSelector());
-        (uint256 batchIndex, bytes32 root) = abi.decode(data[4:], (uint256, bytes32));
-        receiveRoot(batchIndex, root);
     }
 }

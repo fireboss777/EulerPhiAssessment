@@ -75,45 +75,6 @@ contract GatewayTest is ArticleTestBase {
     }
 
     // ------------------------------------------------------------------
-    // Notary receiver (hub -> gateway), pinned + monotonic
-    // ------------------------------------------------------------------
-
-    function test_receiveRootMonotonicPrevRoot() public {
-        bytes32 r0 = keccak256("r0");
-        bytes32 r1 = keccak256("r1");
-
-        // Batch 1 before batch 0 — rejected (no skipping, no reordering).
-        vm.expectRevert(ISubmissionGateway.OutOfOrder.selector);
-        mock.deliver(address(gw), _rootMsg(BASE_SEL, HUB, 1, r1));
-
-        mock.deliver(address(gw), _rootMsg(BASE_SEL, HUB, 0, r0));
-        assertEq(gw.notarizedRoot(0), r0, "batch 0 recorded");
-        assertEq(gw.nextBatch(), 1, "cursor advanced");
-
-        // Replay of batch 0 — rejected.
-        vm.expectRevert(ISubmissionGateway.OutOfOrder.selector);
-        mock.deliver(address(gw), _rootMsg(BASE_SEL, HUB, 0, r0));
-
-        mock.deliver(address(gw), _rootMsg(BASE_SEL, HUB, 1, r1));
-        assertEq(gw.notarizedRoot(1), r1, "batch 1 recorded");
-    }
-
-    function test_receiveRootWrongSourceReverts() public {
-        vm.expectRevert(ISubmissionGateway.BadChain.selector);
-        mock.deliver(address(gw), _rootMsg(BASE_SEL + 1, HUB, 0, keccak256("r")));
-
-        vm.expectRevert(ISubmissionGateway.BadSender.selector);
-        mock.deliver(address(gw), _rootMsg(BASE_SEL, FOREIGN, 0, keccak256("r")));
-    }
-
-    /// @dev `receiveRoot` is public (plan-named API) but router-gated inside:
-    /// a direct caller — even with a perfectly ordered batch — dies at the gate.
-    function test_receiveRootDirectCallReverts() public {
-        vm.expectRevert(ISubmissionGateway.NotRouter.selector);
-        gw.receiveRoot(0, keccak256("r0"));
-    }
-
-    // ------------------------------------------------------------------
     // Wire-format round trip: gateway encode -> (router) -> hub decode.
     // The gateway never verifies signatures, so this proves the two sides
     // agree on bytes end-to-end — the failure mode no unit test sees.
@@ -147,41 +108,10 @@ contract GatewayTest is ArticleTestBase {
         assertEq(hub.journal(0), leaf, "leaf roundtrip through both contracts");
     }
 
-    function test_receiveRootRejectsWrongWireFormat() public {
-        bytes32 root = keccak256("r0");
-
-        Client.Any2EVMMessage memory noSelector = _rootMsg(BASE_SEL, HUB, 0, root);
-        noSelector.data = abi.encode(0, root); // 64-byte tuple: no selector
-        vm.expectRevert(ISubmissionGateway.BadPayloadLength.selector);
-        mock.deliver(address(gw), noSelector);
-
-        Client.Any2EVMMessage memory wrongSelector = _rootMsg(BASE_SEL, HUB, 0, root);
-        wrongSelector.data = abi.encodePacked(hex"deadbeef", abi.encode(0, root));
-        vm.expectRevert(ISubmissionGateway.BadSelector.selector);
-        mock.deliver(address(gw), wrongSelector);
-    }
-
     /// @dev Gateway lane never verifies signatures (decision 1a) — sig bytes
     /// here are payload bytes, byte-identity is what's under test.
     function _payloadAndSig() internal returns (IArticleAnchor.ArticleSubmission memory p, bytes memory sig) {
         p = _payloadFor(vm.addr(AUTHOR_KEY), 11);
         sig = abi.encodePacked(bytes32(uint256(0xAA)), bytes32(uint256(0xBB)), uint8(27));
-    }
-
-    /// @dev Production wire format: the hub sends `abi.encodeCall` of
-    /// `receiveRoot` — fixtures must use the SAME encoding as the contract,
-    /// otherwise the tests validate a payload nobody produces.
-    function _rootMsg(uint64 sel, address sender, uint256 batchIndex, bytes32 root)
-        internal
-        pure
-        returns (Client.Any2EVMMessage memory)
-    {
-        return Client.Any2EVMMessage({
-            messageId: keccak256(abi.encode(batchIndex, root)),
-            sourceChainSelector: sel,
-            sender: abi.encode(sender),
-            data: abi.encodeCall(ISubmissionGateway.receiveRoot, (batchIndex, root)),
-            destTokenAmounts: new Client.EVMTokenAmount[](0)
-        });
     }
 }

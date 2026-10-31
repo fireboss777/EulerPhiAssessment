@@ -2,10 +2,8 @@
 pragma solidity ^0.8.27;
 
 import { ArticleAnchor } from "../src/ArticleAnchor.sol";
-import { SubmissionGateway } from "../src/SubmissionGateway.sol";
 import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
 import { ArticleLib } from "../src/libraries/ArticleLib.sol";
-import { GatewayLib } from "../src/libraries/GatewayLib.sol";
 import { ArticleAnchorV2Stub } from "./mocks/ArticleAnchorV2Stub.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -154,14 +152,6 @@ contract UpgradeTest is ArticleTestBase {
             hub.gateway(),
             "gateway at base+2"
         );
-
-        SubmissionGateway gw = new SubmissionGateway(address(0xB0B), address(hub), 777);
-        vm.prank(address(0xB0B));
-        gw.receiveRoot(0, bytes32(uint256(0xDEAD))); // makes nextBatch non-zero, so the read is not vacuous
-        bytes32 gwSlot = keccak256(abi.encode(uint256(keccak256("eulerphi.storage.SubmissionGateway")) - 1))
-            & ~bytes32(uint256(0xff));
-        assertEq(GatewayLib.STORAGE_SLOT, gwSlot, "gateway slot constant == formula");
-        assertEq(uint256(vm.load(address(gw), gwSlot)), gw.nextBatch(), "nextBatch at the gateway namespace base");
     }
 
     /// @dev Canonical deploy shape (mirrors script/DeployHub.s.sol): an OZ
