@@ -83,8 +83,15 @@ Pinned by `test_whitelistedSourceSubmits`, `test_wrongChainSelectorReverts`,
 is exactly the Merkle root the contract computed over the contiguous range
 `journal[start..end)`, with `start_0 = 0`, `start_{b+1} == end_b`, and
 `end_b <= journalLength`; each `rootAt[b]` is written exactly once.
-Consequently `verifyAgainstBatch(b, leaf, proof) == true` implies `leaf` is an
-element of that journal range.
+Consequently, for `b < anchoredBatches` and a **non-empty** `proof`,
+`verifyAgainstBatch(b, leaf, proof) == true` implies `leaf` is an element of
+that journal range (modulo second-preimage resistance of keccak). With an
+**empty** `proof` the call passes only when `leaf == rootAt[b]`: for a
+single-leaf batch that equality *is* `journal[start_b]` (the honest path —
+`leafProof` of a one-leaf tree is empty), for a multi-leaf batch or an
+unwritten index (`rootAt[b] == 0`, `leaf == 0`) it is vacuous and
+unexploitable — producing a payload whose digest equals a published root is a
+preimage attack.
 
 **Predicate.**
 
