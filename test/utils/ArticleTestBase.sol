@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import { ArticleAnchor } from "../../src/ArticleAnchor.sol";
+import { SubmissionGateway } from "../../src/SubmissionGateway.sol";
 import { IArticleAnchor } from "../../src/interfaces/IArticleAnchor.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { Test } from "forge-std/Test.sol";
@@ -48,6 +49,24 @@ abstract contract ArticleTestBase is Test {
             address(
                 new ERC1967Proxy(
                     address(impl), abi.encodeCall(ArticleAnchor.initialize, (admin_, router_, chainSelector_))
+                )
+            )
+        );
+    }
+
+    /// @dev Production shape: a LOCKED implementation behind an OZ ERC1967
+    /// proxy, configuration passed as the proxy's init data — direct deploys
+    /// are useless now (the bare impl is `_disableInitializers()`-locked).
+    function _deployGateway(address admin_, address router_, address hub_, uint64 baseChainSelector_)
+        internal
+        returns (SubmissionGateway gw)
+    {
+        SubmissionGateway impl = new SubmissionGateway();
+        gw = SubmissionGateway(
+            address(
+                new ERC1967Proxy(
+                    address(impl),
+                    abi.encodeCall(SubmissionGateway.initialize, (admin_, router_, hub_, baseChainSelector_))
                 )
             )
         );

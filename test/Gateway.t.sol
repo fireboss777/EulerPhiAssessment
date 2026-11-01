@@ -21,7 +21,7 @@ contract GatewayTest is ArticleTestBase {
     function setUp() public override {
         super.setUp();
         mock = new MockRouter();
-        gw = new SubmissionGateway(address(mock), HUB, BASE_SEL);
+        gw = _deployGateway(address(this), address(mock), HUB, BASE_SEL);
     }
 
     // ------------------------------------------------------------------

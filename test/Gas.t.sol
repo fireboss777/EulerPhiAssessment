@@ -70,7 +70,7 @@ contract GasTest is ArticleTestBase {
         MockRouter mock = new MockRouter();
         mock.setCapture(false); // forensics off: measure the gateway's own cost
         ArticleAnchor hub = _newHub(address(mock));
-        SubmissionGateway gw = new SubmissionGateway(address(mock), address(hub), SEL);
+        SubmissionGateway gw = _deployGateway(address(this), address(mock), address(hub), SEL);
         vm.deal(address(this), 1 ether);
 
         IArticleAnchor.ArticleSubmission memory p = _payloadFor(vm.addr(KEY), 3);
