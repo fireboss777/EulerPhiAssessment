@@ -1,9 +1,10 @@
 # Primitive invariants
 
-Four properties of the hub (`ArticleAnchor`). "Primitive" is a hard bar: a
+Four properties of the hub (`ArticleAnchor`), plus three for the source-chain
+gateway (`SubmissionGateway`) that feeds it. "Primitive" is a hard bar: a
 violation leaves the system **broken, not degraded**. Everything else — gas
-bounds, rate limits, uuid dedup, fee quoting/refunds, upgrade authority — is
-policy layered on top of these four.
+bounds, rate limits, uuid dedup, the fee *level*, upgrade authority — is
+policy layered on top of these.
 
 Dependency chain: **INV-1** (the data) → **INV-3** (the commitment to the data)
 → **INV-2** (who may add to it) → **INV-4** (what additions are made of).
@@ -160,10 +161,103 @@ verifyingContract → `NotAuthor`), `test_forgedByAuthorSigReverts`,
 
 ---
 
+## GW-1 — Gateway: faithful forwarding of bytes, fee, and destination
+
+**Statement.** Every successful `submitArticle` hands the router exactly:
+destination `baseChainSelector`, receiver `abi.encode(hub)`, value equal to
+the quoted fee, and `data == abi.encode(leafDigest, sig, payload)`
+byte-for-byte. The gateway retains nothing of `msg.value`; the caller is
+charged exactly the fee (the excess comes back).
+
+**Predicate.**
+
+- *Faithful forwarding* — the `ccipSend(destinationChainSelector, message,
+  value)` the gateway dispatches carries, on success:
+  `destinationChainSelector == baseChainSelector`,
+  `abi.decode(message.receiver) == hub`,
+  `value == getFee(baseChainSelector, message)`, and
+  `message.data == abi.encode(leaf, sig, payload)`. (MockRouter's captures
+  record exactly these on the Foundry side — `test_gatewayForwardsByteIdenticalCalldata`
+  asserts them; CVL pins them at the call boundary itself.)
+- *Value honesty* — the gateway's balance is unchanged by the call, and the
+  caller's decreases by exactly `fee`.
+
+**Threat surface.** `submitArticle` (message construction, fee quote,
+`ccipSend` value, refund transfer).
+
+**Why primitive.** `Forwarded(leaf, messageId)` is the source chain's
+attestation that *this* payload went to *that* hub. If bytes, destination, or
+value can diverge from what the caller supplied, the transit layer lies while
+appearing to confirm — the journal would then hold content the source chain
+never attested. Violation = end-to-end integrity loss, not a mispriced hop.
+
+Pinned by `test_gatewayForwardsByteIdenticalCalldata`, `test_excessRefunded`,
+`test_gatewayPayloadLandsInHub`.
+
+---
+
+## GW-2 — Gateway: fail-closed before any fee moves
+
+**Statement.** A submission with a past deadline, a leaf that is not
+`keccak256(abi.encode(payload))`, or `msg.value` below the router's quote
+reverts (`Expired()`, `DigestMismatch()`, `InsufficientFee()`); a rejected
+submission never reaches `ccipSend`.
+
+**Predicate.**
+
+- *Deadline gate* — `block.timestamp > payload.deadline` implies
+  `submitArticle` reverts `Expired()`.
+- *Digest gate* — `leafDigest != keccak256(abi.encode(payload))` implies
+  revert `DigestMismatch()`.
+- *Fee gate* — `msg.value < getFee(baseChainSelector, message)` implies
+  revert `InsufficientFee()`: a shortfall is never subsidised out of the
+  gateway's own balance.
+
+**Threat surface.** `submitArticle` (the three `require`s — presence and
+order relative to the dispatch).
+
+**Why primitive.** The mirror image of INV-2's fail-closed posture, on the
+sending side: every check that gates money must reject rather than degrade.
+Violation = an expired or forged envelope, or an unfunded caller, gets a
+message dispatched — the lane no longer distinguishes valid from invalid at
+its entry.
+
+Pinned by `test_gatewayDigestMismatchReverts`, `test_insufficientFeeReverts`
+(the deadline gate's gateway-side twin is covered by the CVL rule; the
+hub-side one is `test_expiredDeadlineReverts`).
+
+---
+
+## GW-3 — Gateway: configuration written only by initialize
+
+**Statement.** The gateway's entire configuration — `router`, `hub`,
+`baseChainSelector` (the ERC-7201 `Storage` struct) — changes only through
+`initialize`; no other entry point, including `submitArticle` and the OZ
+ownership/upgrade surface, writes it.
+
+**Predicate.** For every state transition not performed by `initialize`:
+`router`, `hub`, and `baseChainSelector` are unchanged.
+
+**Threat surface.** `submitArticle` (reads only); any future setter; the
+ownership surface (which gates upgrades, never configuration).
+
+**Why primitive.** These three values define the lane: which router quotes
+and carries the fee, which hub the bytes are addressed to, which selector
+routes them. Violation = submissions are quoted by, or addressed to, an
+attacker-chosen target while the gateway still reports the honest
+configuration.
+
+Pinned by `test_gatewayConfigPreservedAcrossUpgrade`,
+`test_gatewayInitializeTwiceReverts`.
+
+---
+
 ## Deliberately not invariants
 
-- **Policy** — gas bounds, rate limits, uuid dedup, fee quoting/refunds: real
-  guarantees, but tunable rules layered on top of the four.
+- **Policy** — gas bounds, rate limits, uuid dedup, the fee *level* (what a
+  quote amounts to): real guarantees, but tunable rules layered on top. That
+  the gateway forwards exactly its quote and retains nothing is GW-1 — the
+  honesty of transit, not the price.
 - **Upgrade authority** — `_authorizeUpgrade` and setter gating are OZ
   `Ownable2StepUpgradeable`'s mechanically enforced behavior; restating them
   would duplicate what the framework already guarantees.
