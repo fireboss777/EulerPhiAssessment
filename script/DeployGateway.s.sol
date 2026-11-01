@@ -12,15 +12,15 @@ import { console } from "forge-std/console.sol";
 /// `_authorizeUpgrade` (admin-only). The proxy runs `initialize` in its
 /// constructor via `data`.
 ///
-/// Env: GW_ADMIN (the gateway's upgrade key — a multisig/timelock, the same
-/// advice as HUB_ADMIN), GW_ROUTER (Chainlink Router on Ethereum), GW_HUB
+/// Env: GW_OWNER (the gateway's upgrade key — a multisig/timelock, the same
+/// advice as HUB_OWNER), GW_ROUTER (Chainlink Router on Ethereum), GW_HUB
 /// (ArticleAnchor proxy address on the hub chain), GW_BASE_CHAIN_SELECTOR
 /// (hub chain selector).
 ///
 /// Deploy order: DeployHub -> DeployGateway -> (admin) setGateway(proxy) on the hub.
 contract DeployGateway is Script {
     function run() external returns (address proxy) {
-        address admin = vm.envAddress("GW_ADMIN");
+        address owner = vm.envAddress("GW_OWNER");
         address router = vm.envAddress("GW_ROUTER");
         address hub = vm.envAddress("GW_HUB");
         uint64 selector = uint64(vm.envUint("GW_BASE_CHAIN_SELECTOR"));
@@ -29,7 +29,7 @@ contract DeployGateway is Script {
         SubmissionGateway impl = new SubmissionGateway();
         proxy = address(
             new ERC1967Proxy(
-                address(impl), abi.encodeCall(SubmissionGateway.initialize, (admin, router, hub, selector))
+                address(impl), abi.encodeCall(SubmissionGateway.initialize, (owner, router, hub, selector))
             )
         );
         vm.stopBroadcast();
