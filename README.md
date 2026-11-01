@@ -23,7 +23,7 @@ end-to-end test all run through `forge`/`cast`. There is no JS/TS/npm anywhere
 git clone <this-repo> && cd <this-repo>
 forge soldeer install        # forge-std 1.17.0 + solady 0.1.26, from soldeer.lock
 forge build
-forge test                   # 56 tests, 8 suites
+forge test                   # 63 tests, 8 suites
 forge snapshot               # regenerates .gas-snapshot
 bash script/e2e-anvil.sh     # live end-to-end on anvil: submit → anchor
 ```
@@ -122,9 +122,10 @@ from the one above and adds an assumption.
 
 **1. Hub (L2 canonical record) — strongest.**
 You trust: this code, the author's key (for their own bylines), the two
-upgrade keys — the hub's admin on L2 (owns the journal) and `GW_ADMIN` on L1
-(owns the paid lane only: a compromised gateway admin reroutes messages and
-fees, never the journal) — and Chainlink only for the cross-chain legs. Roots are derived
+OZ `owner` keys — the hub's owner on L2 (owns the journal) and `GW_OWNER` on L1
+(owns the paid lane only: a compromised gateway owner reroutes messages and
+fees, never the journal), each rotatable by two-step transfer — and Chainlink
+only for the cross-chain legs. Roots are derived
 by the contract from the journal, so a compromised *keeper* gains nothing — it
 can withhold a call (delay), never lie about content.
 
@@ -151,14 +152,14 @@ production-shaped numbers, not direct-call ones.
 
 | Operation | Who pays | Gas (marginal) | Notes |
 |---|---|---:|---|
-| `submitArticle` — first leaf (cold slots) | relayer / writer | **129,437** | opens the batch window |
-| `submitArticle` — steady state | relayer / writer | **87,418** | 1h per-author rate limit applies |
+| `submitArticle` — first leaf (cold slots) | relayer / writer | **129,415** | opens the batch window |
+| `submitArticle` — steady state | relayer / writer | **87,396** | 1h per-author rate limit applies |
 | `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **104,493** | ≈75k fixed window/tree overhead |
 | `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **654,503** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
-| `verifyAgainstBatch` — 10-leaf root | reader | **15,041** | an `eth_call` costs you nothing |
-| gateway `submitArticle` — our side | writer | **46,557** | + L1 gas + CCIP fee (router's execution on top) |
+| `verifyAgainstBatch` — 10-leaf root | reader | **15,064** | an `eth_call` costs you nothing |
+| gateway `submitArticle` — our side | writer | **46,531** | + L1 gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 11,389 B runtime, `SubmissionGateway` 7,224 B
+Contract sizes: `ArticleAnchor` 12,435 B runtime, `SubmissionGateway` 8,284 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
@@ -178,7 +179,7 @@ affordable where per-article onchain storage would not be.
 
 ## Attack matrix ↔ tests
 
-56 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
+63 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
 
 | # | Threat | Defense | Test(s) |
 |---|---|---|---|
@@ -197,8 +198,8 @@ affordable where per-article onchain storage would not be.
 | 12 | Grief batches (early/late/empty closes) | `MIN_BATCH`/`MAX_BATCH`/`BATCH_DEADLINE`/`pending > 0` | `Batch.t.sol::test_anchorRequiresMinOrDeadline`, `Batch.t.sol::test_anchorAtMaxBatch`, `Batch.t.sol::test_emptyAnchorReverts` |
 | 13 | Prove a leaf that isn't in the batch (or is from another batch) | `MerkleProofLib` against the frozen root | `Batch.t.sol::test_verifyAgainstBatchFalse`, `Batch.t.sol::test_verifyAgainstBatchTrue` |
 | 14 | Merkle builder/verifier disagree (implementation bug) | differential vs hand-written `NaiveMerkle` + fuzz | `MerkleDifferential.t.sol::test_matchesNaiveReference` (256 runs), `test_oddLeafCounts`, `test_singleLeafRoot` |
-| 15 | Upgrade by anyone, or a second upgrade authority hiding beside the UUPS path | `_authorizeUpgrade` admin-only on both contracts; each contract's OZ `ERC1967Proxy` has **no admin entry at all** (ERC-1967 admin slot stays `0`); OZ `onlyProxy` blocks any attempt on either bare implementation | `Upgrade.t.sol::test_nonAdminUpgradeReverts`, `test_gatewayNonAdminUpgradeReverts`, `test_proxyHasNoAdminSlot`, `test_bareImplementationUpgradeReverts`, `test_gatewayBareImplementationUpgradeReverts` |
-| 16 | Re-initialize (proxy *or* bare implementation), hijack gateway wiring, corrupt storage on upgrade | OZ `initializer` lock (bare impl `_disableInitializers()`-locked at construction) + zero-admin rejection, `setGateway` admin-only, ERC-7201 namespaced layout, append-only journal | `Upgrade.t.sol::test_initializeTwiceReverts`, `test_gatewayInitializeTwiceReverts`, `test_bareImplementationCannotBeInitialized`, `test_gatewayBareImplementationCannotBeInitialized`, `test_initializeRejectsZeroAdmin`, `test_gatewayInitializeRejectsZeroAdmin`, `test_gatewayZeroAdminProxyCannotBeConstructed`, `test_setGatewayOnlyAdmin`, `test_journalPreservedAcrossUpgrade`, `test_gatewayConfigPreservedAcrossUpgrade` |
+| 15 | Upgrade by anyone, or a second upgrade authority hiding beside the UUPS path | `_authorizeUpgrade` is `onlyOwner` on both contracts (OZ Ownable — a `pendingOwner` has no power until `acceptOwnership`); each contract's OZ `ERC1967Proxy` has **no admin entry at all** (ERC-1967 admin slot stays `0`); OZ `onlyProxy` blocks any attempt on either bare implementation | `Upgrade.t.sol::test_nonOwnerUpgradeReverts`, `test_gatewayNonOwnerUpgradeReverts`, `test_proxyHasNoAdminSlot`, `test_bareImplementationUpgradeReverts`, `test_gatewayBareImplementationUpgradeReverts`, `test_transferOwnershipStartsTwoStep`, `test_acceptOwnershipCompletesTransfer`, `test_acceptOwnershipRejectsNonPending`, `test_transferOwnershipOnlyOwner`, `test_transferToZeroCancelsPending`, `test_gatewayTransferOwnershipTwoStep`, `test_renounceOwnershipDisablesUpgrades` |
+| 16 | Re-initialize (proxy *or* bare implementation), hijack gateway wiring, corrupt storage on upgrade | OZ `initializer` lock (bare impl `_disableInitializers()`-locked at construction) + zero-owner rejection (`OwnableInvalidOwner`), `setGateway` owner-only, ERC-7201 namespaced layout, append-only journal | `Upgrade.t.sol::test_initializeTwiceReverts`, `test_gatewayInitializeTwiceReverts`, `test_bareImplementationCannotBeInitialized`, `test_gatewayBareImplementationCannotBeInitialized`, `test_initializeRejectsZeroOwner`, `test_gatewayInitializeRejectsZeroOwner`, `test_zeroOwnerProxyCannotBeConstructed`, `test_gatewayZeroOwnerProxyCannotBeConstructed`, `test_setGatewayOnlyOwner`, `test_journalPreservedAcrossUpgrade`, `test_gatewayConfigPreservedAcrossUpgrade` |
 | 17 | Spam one author's journal | `RATE_LIMIT = 1h` | `Submit.t.sol::test_rateLimit1hReverts` |
 | 18 | Submit an expired article | `block.timestamp ≤ deadline`, checked first on both lanes | `Submit.t.sol::test_expiredDeadlineReverts` |
 | 19 | Run off with / overcharge the gateway fee | `getFee` quote, `msg.value ≥ fee`, refund excess, gateway retains 0 | `Gateway.t.sol::test_insufficientFeeReverts`, `test_excessRefunded` |
@@ -301,12 +302,13 @@ for both contracts, constant, id and contents must all agree. Payoffs: a future
 base contract or a field reordering cannot collide with this layout, because a
 namespace owns its own region of the slot space; the layout is auditable as one
 commented block instead of being implied by declaration order across the file;
-and `admin`/`router`/`ethChainSelector`/`gateway` keep exactly the packing the
-linear layout gave them (`router` + `ethChainSelector` share word 1, which is
-what `ccipReceive` reads together — the first migration attempt split them and
-paid +2,100 gas per delivery until the storage layout caught it), while the
-gateway packs `router` + `baseChainSelector` into word 1 because
-`submitArticle` reads both. This is breaking for a proxy deployed at the old
+and `router`/`ethChainSelector`/`gateway` keep exactly the pairing the
+linear layout gave them (`router` + `ethChainSelector` share one word — the
+namespace base since ownership moved to OZ — which is what `ccipReceive` reads
+together: the first migration attempt split them and paid +2,100 gas per
+delivery until the storage layout caught it), while the gateway packs
+`router` + `baseChainSelector` into its base word because `submitArticle`
+reads both. This is breaking for a proxy deployed at the old
 linear slots; no such deployment exists for either namespace (the gateway's
 notary-era layout never shipped a proxy either), and there is deliberately no
 dual-read migration.
@@ -367,8 +369,8 @@ caught lying, because the journal settles what it may claim.
 
 ### UUPS trust note and renounce plan
 
-The two admin keys are the trust floor of the system: the hub's admin can
-upgrade the implementation and therefore control the journal, and `GW_ADMIN`
+The two owner keys are the trust floor of the system: the hub's OZ `owner` can
+upgrade the implementation and therefore control the journal, and `GW_OWNER`
 can upgrade the gateway — enough to reroute or halt the paid lane (an upgrade
 rewrites `router`/`hub`/`baseChainSelector`), never to touch the journal,
 whose every check runs on the hub, out of the gateway's reach. Mitigations in
@@ -378,15 +380,15 @@ place, all tested, and each applies to **both** contracts:
   which has **no admin/authority entry of its own** — the ERC-1967 admin slot
   is `0` and stays there (`test_proxyHasNoAdminSlot`), so there is no factory
   key, guardian or fallback route to disable. `upgradeToAndCall` gated by
-  `_authorizeUpgrade` (admin-only) is the only way up — `test_nonAdminUpgradeReverts`,
-  `test_gatewayNonAdminUpgradeReverts` — and OZ's `onlyProxy` kills any attempt
+  `_authorizeUpgrade` (`onlyOwner`, OZ Ownable) is the only way up — `test_nonOwnerUpgradeReverts`,
+  `test_gatewayNonOwnerUpgradeReverts` — and OZ's `onlyProxy` kills any attempt
   made against either bare implementation (`test_bareImplementationUpgradeReverts`,
   `test_gatewayBareImplementationUpgradeReverts`).
 - **No half-deployed hub or gateway can exist**: OZ's proxy refuses
   construction with empty init data (`ERC1967ProxyUninitialized`) and a botched
-  `initialize(admin_ = 0)` bubbles out of the constructor
-  (`test_zeroAdminProxyCannotBeConstructed`,
-  `test_gatewayZeroAdminProxyCannotBeConstructed`) — a failed deploy leaves
+  `initialize(initialOwner = 0)` bubbles out of the constructor
+  (`test_zeroOwnerProxyCannotBeConstructed`,
+  `test_gatewayZeroOwnerProxyCannotBeConstructed`) — a failed deploy leaves
   nothing on chain to strand users.
 - **`initialize` runs exactly once**, via OpenZeppelin's `initializer`
   modifier. The constructor writes **no variable at all** — OZ's documented
@@ -396,8 +398,9 @@ place, all tested, and each applies to **both** contracts:
   `test_gatewayBareImplementationCannotBeInitialized`; a second call on the
   proxy reverts `InvalidInitialization()` — `test_initializeTwiceReverts`,
   `test_gatewayInitializeTwiceReverts`). The body still rejects
-  `admin_ = address(0)` (`test_initializeRejectsZeroAdmin`,
-  `test_gatewayInitializeRejectsZeroAdmin`). **Storage survives upgrades**
+  `initialOwner = address(0)` through `__Ownable_init`
+  (`OwnableInvalidOwner(address(0))`) (`test_initializeRejectsZeroOwner`,
+  `test_gatewayInitializeRejectsZeroOwner`). **Storage survives upgrades**
   (`test_journalPreservedAcrossUpgrade`,
   `test_gatewayConfigPreservedAcrossUpgrade`).
   No base `__X_init()` is called, and none exists to call: `UUPSUpgradeable`
@@ -406,26 +409,25 @@ place, all tested, and each applies to **both** contracts:
   Solady's `EIP712` caches its domain separator in `immutable`s and invalidates
   the cache whenever `address()` differs, so the separator is rebuilt over the
   proxy address, and `Initializable`'s own state is an ERC-7201 slot. Those
-  three configuration words on the hub (four on the gateway) are the entire
+  two configuration words on the hub (three on the gateway) are the entire
   bootstrap.
-- **`admin` is written exactly once** — by `initialize`, on the proxy (the
-  constructor writes no configuration) — and has **no transfer function**. It cannot be rotated after deployment. That is
-  a deliberate trade: no transfer means no transfer-hijack, and the price is
-  that you must **deploy with a multisig/timelock as `HUB_ADMIN` from day one** — and the
-  same rule for `GW_ADMIN` on L1. There is no later correction.
-- **Renounce plan**: OpenZeppelin's `UUPSUpgradeable` exposes no renounce
-  function either (only `upgradeToAndCall`, `proxiableUUID`,
-  `_authorizeUpgrade`, plus the read-only `UPGRADE_INTERFACE_VERSION`), so
-  renouncing means **one final upgrade per proxy — there are two — to an
-  implementation whose `_authorizeUpgrade` unconditionally reverts**, then
-  discarding each admin key. It must **not** be done by zeroing `admin`: initialization is gated by
-  OpenZeppelin's `Initializable` version slot (not by the admin value), so
-  zeroing admin would *not* re-open `initialize` — it would instead
-  permanently brick
-  `setGateway` and every `admin only` path. Nothing can write `admin` after
-  init today (it is set exactly once by `initialize`), so zeroing it is not an
-  open hole but it is a wrong renounce mechanism: upgrade to a locked
-  implementation first, then discard the key.
+- **Ownership is OZ `Ownable2Step`, written exactly once** — `__Ownable_init`
+  runs inside `initialize` on the proxy (the constructor writes no
+  configuration) and rejects `address(0)` (`OwnableInvalidOwner`). Rotation is
+  a **two-step transfer**: `transferOwnership(new)` only sets `pendingOwner`
+  (no power until the new key calls `acceptOwnership()`), and
+  `transferOwnership(address(0))` cancels a pending transfer — a wrong address
+  can never gain, so there is no transfer-hijack to fear. The price is that you
+  must **deploy with a multisig/timelock as `HUB_OWNER` from day one** — and
+  the same rule for `GW_OWNER` on L1.
+- **Renounce plan**: each proxy's owner calls **`renounceOwnership()`** — OZ's
+  function, one step by OZ's design (the two-step rule protects transfers, not
+  renouncing) — which sets `owner` to `address(0)` and makes every `onlyOwner`
+  path (`_authorizeUpgrade`, `setGateway`) unreachable forever. There are two
+  keys, so there are two calls, and `OwnershipTransferred(old, 0)` is the
+  on-chain record. Ownership lives in OZ's ERC-7201 slots, not in the app
+  namespace, so renouncing changes no initialization state: `Initializable`'s
+  version slot still gates `initialize`, which stays closed.
 
 ### Chain selectors are sourced, never guessed
 
@@ -484,21 +486,21 @@ IPFS node calls from Solidity; it is commitments only.
 ## Deployment
 
 ```bash
-# 1. Hub (Base) — OZ ERC1967 proxy (no admin entry at all); admin = your multisig/timelock
-HUB_ADMIN=<multisig> \
+# 1. Hub (Base) — OZ ERC1967 proxy (no admin entry at all); owner = your multisig/timelock
+HUB_OWNER=<multisig> \
 HUB_ROUTER=<chainlink router on Base> \
 HUB_ETH_CHAIN_SELECTOR=<Chainlink selector for the Base→Ethereum lane> \
   forge script script/DeployHub.s.sol --rpc-url $BASE_RPC --broadcast
 
 # 2. Gateway (Ethereum) — OZ ERC1967 proxy (same single upgrade path as the
-#    hub); GW_ADMIN is the gateway's upgrade key — multisig/timelock
-GW_ADMIN=<multisig> \
+#    hub); GW_OWNER is the gateway's upgrade key — multisig/timelock
+GW_OWNER=<multisig> \
 GW_ROUTER=<chainlink router on Ethereum> \
 GW_HUB=<hub proxy address> \
 GW_BASE_CHAIN_SELECTOR=<Chainlink selector for the Ethereum→Base lane> \
   forge script script/DeployGateway.s.sol --rpc-url $ETH_RPC --broadcast
 
-# 3. Wire them (admin only) — $GATEWAY is the GATEWAY_PROXY address from the log
+# 3. Wire them (owner only) — $GATEWAY is the GATEWAY_PROXY address from the log
 cast send $HUB "setGateway(address)" $GATEWAY --private-key $ADMIN_KEY --rpc-url $BASE_RPC
 
 # Keepers (permissionless — anyone can run)
@@ -513,7 +515,7 @@ HUB_ADDRESS=$HUB forge script script/Anchor.s.sol    --rpc-url $BASE_RPC --broad
 src/
   ArticleAnchor.sol        hub: submit, journal, batching, roots, CCIP inbound, UUPS
   SubmissionGateway.sol    L1: payable entry lane (no ecrecover), UUPS proxy
-  ArticleAnchorGetters.sol the hub's 13 read getters, implemented once (abstract)
+  ArticleAnchorGetters.sol the hub's 12 read getters, implemented once (abstract)
   SubmissionGatewayGetters.sol
                            the gateway's 4 read getters, implemented once
                            (abstract)
@@ -541,15 +543,15 @@ src/
                            error declared here, never a revert string: each
                            guard is written `require(condition, Err())`
     IArticleAnchorGetters.sol
-                           the hub's 13 read getters — declared in ONE place,
+                           the hub's 12 read getters — declared in ONE place,
                            implemented in ONE contract (`ArticleAnchorGetters`),
                            an `sload` in the account that owns the namespace.
                            No wrapper copies them anywhere
-    ISubmissionGateway.sol same for SubmissionGateway (6 typed errors + its
-                           ERC-7201 `Storage` struct — router/hub/selector/
-                           admin, documented field by field)
+    ISubmissionGateway.sol same for SubmissionGateway (4 typed errors + its
+                           ERC-7201 `Storage` struct — router/hub/selector,
+                           documented field by field)
     ISubmissionGatewayGetters.sol
-                           the gateway's 4 state reads — declared once,
+                           the gateway's 3 state reads — declared once,
                            implemented once in `SubmissionGatewayGetters`
     Client.sol, IRouterClient.sol, IAny2EVMMessageReceiver.sol
                            vendored CCIP subset @ commit 171f9f0
@@ -583,9 +585,9 @@ code, and big decimals read `1_700_000_000`.
 
 | Rule | Where you see it |
 |---|---|
-| **Order of functions** — `constructor` → `receive` → `fallback` → `external` → `public` → `internal` → `private`, with `view`/`pure` last inside each group | `ArticleAnchor`: `initialize` … `anchorNextBatch`, then the external `view` `verifyAgainstBatch`, then `_consumeSubmittedArticle` … `_checkAdmin` |
-| **Order of layout** — type declarations → state variables → events → errors → modifiers → functions | interfaces open with their events, then the typed errors, then the ABI; contracts open with state, then `modifier onlyAdmin`, then functions |
-| **Modifier order** — visibility → mutability → `virtual` → `override` → custom | `_authorizeUpgrade(address) internal view override onlyAdmin` |
+| **Order of functions** — `constructor` → `receive` → `fallback` → `external` → `public` → `internal` → `private`, with `view`/`pure` last inside each group | `ArticleAnchor`: `initialize` … `anchorNextBatch`, then the external `view` `verifyAgainstBatch`, then `_consumeSubmittedArticle` … `_domainNameAndVersion` |
+| **Order of layout** — type declarations → state variables → events → errors → modifiers → functions | interfaces open with their events, then the typed errors, then the ABI; contracts open with `constructor`, then functions (no declared state or modifiers — they live in the ERC-7201 namespace and OZ) |
+| **Modifier order** — visibility → mutability → `virtual` → `override` → custom | `_authorizeUpgrade(address) internal view override onlyOwner` |
 | **≤ 120 characters per line** | enforced by `forge fmt` (see exception 3) |
 
 Naming follows the guide: `CapWords` for contracts, structs and events,
@@ -593,7 +595,7 @@ Naming follows the guide: `CapWords` for contracts, structs and events,
 constants (`TYPEHASH`, `SUBMIT_GAS_LIMIT`, `STORAGE_SLOT`); first-party `src/`
 holds no immutable at all anymore (the gateway's three became storage when it
 went UUPS), so nothing else takes the SCREAMING shape. State-variable getters
-stay `mixedCase` (`admin`, `router`, `hub` — storage, not bytecode). Then a
+stay `mixedCase` (`owner`, `router`, `hub` — storage, not bytecode). Then a
 leading `_` on every non-external **function** (`_submit`, `_buildRoot`,
 `_deployHub`, `_signedLeaf`). Two deliberate calls where the
 guide leaves room:
@@ -630,8 +632,9 @@ be inconsistent"*.
 ## Known limitations
 
 - **Not audited.** Treat as assessment code until a review says otherwise.
-- **Admin key is irrecoverable if lost, un-rotatable if stolen** — deploy with
-  a multisig, plan the renounce upgrade (see above).
+- **Owner key is irrecoverable if lost** — Ownable has no recovery path;
+  deploy with a multisig. A stolen owner key completes a two-step transfer to
+  the thief themselves — timelock/multisig from day one (see above).
 - **No keeper incentive** → no guaranteed batch cadence.
 - **No frontend, no indexer, no IPFS pinning** — by the 100%-Solidity rule.
 - **No roles, no fees, no ZK** in v1 — extension points documented above.
