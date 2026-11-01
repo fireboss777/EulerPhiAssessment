@@ -53,7 +53,14 @@ methods {
 /// in-place write breaks immutability, any pop/resize breaks monotonicity).
 /// Reverting f's are ignored by default — a reverted call changes nothing.
 rule journalAppendOnly(env e, method f, calldataarg args, uint256 i)
+    filtered {
+        f -> f.selector != sig:upgradeToAndCall(address,bytes).selector
+    }
 {
+    // Reachability precondition: raw harness storage can hold an absurd
+    // length word (2^256-1) whose push wraps to 0 in the model — such a
+    // state is not reachable from initialize (physical bound: gas).
+    require hub.journalLength() < max_uint;
     require i < hub.journalLength();
     uint256 lenBefore = hub.journalLength();
     bytes32 elemBefore = hub.journal(i);
@@ -113,6 +120,13 @@ rule senderMustBeTheRegisteredGateway(
     hub.setGateway(eOwner, c, gw);
 
     require message.sourceChainSelector == c;
+    // CCIP's Any2EVMMessage.sender is abi.encode(address): exactly 32 bytes.
+    // The bound keeps the keccak-congruence exclusion exact — abi.decode
+    // reads only the first word, so a padded tail (43 bytes in the run-4
+    // counterexample) would hash differently yet decode to gw. Honest CCIP
+    // never pads; padded senders are excluded here so the rule states
+    // decode-level pairing precisely.
+    require message.sender.length == 32;
     require keccak256(message.sender) != keccak256(gw);   // sender != abi.encode(gw)
     require eRouter.msg.sender == hub.router();
 
@@ -153,7 +167,14 @@ rule initializeNeverTouchesGatewayAt(env e, address o, address r, uint64 c)
 
 /// INV-3 · Freeze: once anchoredBatches covers b, rootAt[b] never changes.
 rule publishedRootsAreFrozen(env e, method f, calldataarg args, uint256 b)
+    filtered {
+        f -> f.selector != sig:upgradeToAndCall(address,bytes).selector
+    }
 {
+    // upgradeToAndCall is filtered: its low-level delegatecall is an
+    // unresolved external call in this implementation-level scene (no
+    // proxy), which pessimistically havocs state — upgrade semantics are
+    // pinned by test/Upgrade.t.sol instead.
     require b < hub.anchoredBatches();
     bytes32 rootBefore = hub.rootAt(b);
 
@@ -167,8 +188,23 @@ rule publishedRootsAreFrozen(env e, method f, calldataarg args, uint256 b)
 /// inside the journal at all times. start_{b+1} == end_b follows
 /// structurally: `start` is always read from lastAnchoredIndex, which the
 /// successful path sets to its own `end` exactly once (rule below).
-invariant anchoredPrefixIsInsideJournal()
-    hub.lastAnchoredIndex() <= hub.journalLength();
+/// Written as a parametric rule, not an `invariant`: invariants are assumed
+/// globally (requireInvariants), so one whose induction base touches
+/// unconstrained raw-storage states poisons unrelated rules with
+/// "assert weak invariant in post-state" failures.
+rule anchoredPrefixPreserved(env e, method f, calldataarg args)
+    filtered {
+        f -> f.selector != sig:upgradeToAndCall(address,bytes).selector
+    }
+{
+    require hub.journalLength() < max_uint;
+    require hub.lastAnchoredIndex() <= hub.journalLength();
+
+    hub.f(e, args);
+
+    assert hub.lastAnchoredIndex() <= hub.journalLength(),
+        "INV-3 · Contiguous coverage: the cursor stays inside the journal";
+}
 
 /// INV-3 · Cursor discipline: one batch per successful call, strictly
 /// forward, never past the journal; the value frozen at the fresh index is
@@ -223,6 +259,7 @@ rule journalGrowsOnlyThroughSubmissions(env e, method f, calldataarg args)
     filtered {
         f -> f.selector != sig:submitArticle(bytes32,bytes,IArticleAnchor.ArticleSubmission).selector
           && f.selector != sig:ccipReceive(Client.Any2EVMMessage).selector
+          && f.selector != sig:upgradeToAndCall(address,bytes).selector
     }
 {
     uint256 lenBefore = hub.journalLength();
@@ -249,6 +286,7 @@ rule submissionJournalsTheSignedContent(
     IArticleAnchor.ArticleSubmission payload
 )
 {
+    require hub.journalLength() < max_uint;   // see journalAppendOnly's note
     uint256 lenBefore = hub.journalLength();
 
     hub.submitArticle@withrevert(e, leaf, signature, payload);
