@@ -43,30 +43,28 @@ interface IArticleAnchor {
     ///
     /// @custom:storage-location erc7201:eulerphi.storage.ArticleAnchor
     struct Storage {
-        /// @dev Slot 0.
-        address admin;
-        /// @dev Slot 1, bytes 0..20.
+        /// @dev Slot 0, bytes 0..20.
         address router;
-        /// @dev Slot 1, bytes 20..28 — packs with `router` (20 + 8 <= 32). This
+        /// @dev Slot 0, bytes 20..28 — packs with `router` (20 + 8 <= 32). This
         /// pairing is the original contract layout, byte for byte: `ccipReceive`
         /// reads both, so they must share one cold word.
         uint64 ethChainSelector;
-        /// @dev Slot 2.
+        /// @dev Slot 1.
         address gateway;
-        /// @dev Slot 3 — the word holds the array length; element `i` lives at
-        /// `keccak256(abi.encode(uint256(3), baseSlot)) + i`.
+        /// @dev Slot 2 — the word holds the array length; element `i` lives at
+        /// `keccak256(abi.encode(uint256(2), baseSlot)) + i`.
         bytes32[] journal;
-        /// @dev Slot 4 — double-mapping base; entry slots derive from it.
+        /// @dev Slot 3 — double-mapping base; entry slots derive from it.
         mapping(address => mapping(bytes32 => bool)) usedUuid;
-        /// @dev Slot 5.
+        /// @dev Slot 4.
         mapping(address => uint256) lastSubmit;
-        /// @dev Slot 6.
+        /// @dev Slot 5.
         uint256 batchOpenedAt;
-        /// @dev Slot 7.
+        /// @dev Slot 6.
         uint256 lastAnchoredIndex;
-        /// @dev Slot 8 — mapping base; value at `keccak256(abi.encode(uint256(batchIndex), baseSlot))`.
+        /// @dev Slot 7 — mapping base; value at `keccak256(abi.encode(uint256(batchIndex), baseSlot))`.
         mapping(uint256 => bytes32) rootAt;
-        /// @dev Slot 9.
+        /// @dev Slot 8.
         uint256 anchoredBatches;
     }
 
@@ -101,14 +99,11 @@ interface IArticleAnchor {
 
     // ---------------------------------------------------------------------
     // Errors (thrown by the implementation; declared here so the ABI and the
-    // docs of every failure mode live with the API they belong to)
+    // docs of every failure mode live with the API they belong to. Access
+    // control — `OwnableUnauthorizedAccount`, `OwnableInvalidOwner` — is
+    // declared by OZ's `OwnableUpgradeable`, never redeclared here.)
     // ---------------------------------------------------------------------
 
-    /// @notice Caller is not the `admin`.
-    error AdminOnly();
-    /// @notice `initialize` was called with `admin_ = address(0)` — an
-    /// admin-less hub could never be upgraded.
-    error ZeroAdmin();
     /// @notice The payload's `deadline` is already in the past.
     error Expired();
     /// @notice `leafDigest` is not `keccak256(abi.encode(payload))`.
@@ -143,12 +138,13 @@ interface IArticleAnchor {
     /// the bare implementation is locked forever by `_disableInitializers()`
     /// in its own constructor, so no stranger can ever own it.
     /// @dev Reverts `Initializable.InvalidInitialization()` on a second call,
-    /// and `ZeroAdmin()` on `admin_ = address(0)`.
-    function initialize(address admin_, address router_, uint64 chainSelector_) external;
+    /// and OZ's `OwnableInvalidOwner(address(0))` on `initialOwner = address(0)`
+    /// (the zero check lives in `__Ownable_init`).
+    function initialize(address initialOwner, address router_, uint64 chainSelector_) external;
 
     /// @notice Post-deploy wiring: the L1 gateway address is known only after
     /// the gateway contract exists (deploy order: hub -> gateway -> setGateway).
-    /// @dev Admin-only.
+    /// @dev owner-only.
     function setGateway(address gateway_) external;
 
     // ---------------------------------------------------------------------

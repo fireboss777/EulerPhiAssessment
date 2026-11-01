@@ -4,24 +4,29 @@ pragma solidity ^0.8.27;
 import { ArticleAnchor } from "../src/ArticleAnchor.sol";
 import { SubmissionGateway } from "../src/SubmissionGateway.sol";
 import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
-import { ISubmissionGateway } from "../src/interfaces/ISubmissionGateway.sol";
 import { ArticleLib } from "../src/libraries/ArticleLib.sol";
 import { GatewayLib } from "../src/libraries/GatewayLib.sol";
 import { ArticleAnchorV2Stub } from "./mocks/ArticleAnchorV2Stub.sol";
 import { MockRouter } from "./mocks/MockRouter.sol";
 import { SubmissionGatewayV2Stub } from "./mocks/SubmissionGatewayV2Stub.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
+import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 contract UpgradeTest is ArticleTestBase {
-    function test_nonAdminUpgradeReverts() public {
+    /// @dev Mirrors of OZ's ownership events so `vm.expectEmit` can name them
+    /// — a test contract does not inherit `OwnableUpgradeable`.
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
+
+    function test_nonOwnerUpgradeReverts() public {
         (ArticleAnchor hub,) = _proxyHub(address(this), address(0), 8453);
         ArticleAnchor newImpl = new ArticleAnchor();
 
         vm.prank(address(0xBAD));
-        vm.expectRevert(IArticleAnchor.AdminOnly.selector);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(0xBAD)));
         hub.upgradeToAndCall(address(newImpl), "");
     }
 
@@ -39,19 +44,19 @@ contract UpgradeTest is ArticleTestBase {
         assertEq(hub.journal(0), leaf0, "leaf0 survived");
         assertEq(hub.journal(1), leaf1, "leaf1 survived");
         assertEq(hub.journal(2), leaf2, "leaf2 survived");
-        assertEq(hub.admin(), address(this), "admin survived");
+        assertEq(hub.owner(), address(this), "owner survived");
         assertEq(ArticleAnchorV2Stub(address(hub)).v2Ping(), 42, "new implementation logic live");
     }
 
-    function test_setGatewayOnlyAdmin() public {
+    function test_setGatewayOnlyOwner() public {
         (ArticleAnchor hub,) = _proxyHub(address(this), address(0), 8453);
 
         vm.prank(address(0xBAD));
-        vm.expectRevert(IArticleAnchor.AdminOnly.selector);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(0xBAD)));
         hub.setGateway(address(0x9999));
 
         hub.setGateway(address(0x9999));
-        assertEq(hub.gateway(), address(0x9999), "admin setter works");
+        assertEq(hub.gateway(), address(0x9999), "owner setter works");
     }
 
     function test_initializeTwiceReverts() public {
@@ -61,8 +66,8 @@ contract UpgradeTest is ArticleTestBase {
         hub.initialize(address(0xBAD), address(0), 8453);
     }
 
-    /// @dev The bare implementation ships with `admin = address(0)` in the
-    /// deploy script — its own `initialize` guard must not be open on it.
+    /// @dev The bare implementation ships uninitialized — its own
+    /// `initialize` guard must not be open on it.
     function test_bareImplementationCannotBeInitialized() public {
         ArticleAnchor impl = new ArticleAnchor();
 
@@ -70,30 +75,30 @@ contract UpgradeTest is ArticleTestBase {
         impl.initialize(address(0xBAD), address(0), 8453);
     }
 
-    /// @dev A fresh hub must refuse `admin_ = 0`: an admin-less hub would be
-    /// permanently un-upgradeable (nobody passes `msg.sender == admin`).
+    /// @dev A fresh hub must refuse `initialOwner = 0`: an owner-less hub would
+    /// be permanently un-upgradeable (no sender can equal `owner()`).
     /// OZ's proxy forbids EMPTY init data (`ERC1967ProxyUninitialized`), so we
     /// satisfy its guard with a harmless view call — that leaves the hub's own
     /// `_initialized` flag untouched, i.e. the hub really is uninitialized.
-    function test_initializeRejectsZeroAdmin() public {
+    function test_initializeRejectsZeroOwner() public {
         ArticleAnchor impl = new ArticleAnchor();
         ArticleAnchor fresh =
             ArticleAnchor(address(new ERC1967Proxy(address(impl), abi.encodeWithSignature("journalLength()"))));
 
-        vm.expectRevert(IArticleAnchor.ZeroAdmin.selector);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableInvalidOwner.selector, address(0)));
         fresh.initialize(address(0), address(0), 8453);
 
         fresh.initialize(address(this), address(0), 8453); // failed attempt must not consume the flag
-        assertEq(fresh.admin(), address(this), "legit init works");
+        assertEq(fresh.owner(), address(this), "legit init works");
     }
 
-    /// @dev Deploy-time safety: a botched `initialize(admin_ = 0)` bubbles out
+    /// @dev Deploy-time safety: a botched `initialize(initialOwner = 0)` bubbles out
     /// of the proxy CONSTRUCTOR, so no broken, un-upgradeable proxy is ever
     /// left behind on chain.
-    function test_zeroAdminProxyCannotBeConstructed() public {
+    function test_zeroOwnerProxyCannotBeConstructed() public {
         ArticleAnchor impl = new ArticleAnchor();
 
-        vm.expectRevert(IArticleAnchor.ZeroAdmin.selector);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableInvalidOwner.selector, address(0)));
         new ERC1967Proxy(address(impl), abi.encodeCall(ArticleAnchor.initialize, (address(0), address(0), 8453)));
     }
 
@@ -125,7 +130,7 @@ contract UpgradeTest is ArticleTestBase {
             address(impl),
             "impl slot must point at the implementation"
         );
-        assertEq(hub.admin(), address(this), "app state lives behind the proxy");
+        assertEq(hub.owner(), address(this), "app state lives behind the proxy");
 
         // Same two slots on the gateway proxy — its guarantees must match the hub's.
         (SubmissionGateway gw, SubmissionGateway gwImpl) =
@@ -138,7 +143,7 @@ contract UpgradeTest is ArticleTestBase {
             address(gwImpl),
             "gateway impl slot must point at the implementation"
         );
-        assertEq(gw.admin(), address(this), "gateway state lives behind the proxy");
+        assertEq(gw.owner(), address(this), "gateway state lives behind the proxy");
     }
 
     /// @dev ERC-7201 proof: recompute each namespace slot FROM ITS ID and read
@@ -146,9 +151,9 @@ contract UpgradeTest is ArticleTestBase {
     /// really is the ERC-7201 formula (id-derived, constant and raw slots are
     /// independent computations that must agree),
     /// and the struct really lives there, packing included: `router` (20B) + `ethChainSelector` (8B)
-    /// share word 1 of the hub namespace, exactly as the pre-migration
-    /// contract layout packed them. The gateway half does the same for
-    /// `GatewayLib.STORAGE_SLOT` and its four config words.
+    /// share the base word of the hub namespace, exactly as the pre-migration
+    /// contract layout paired them. The gateway half does the same for
+    /// `GatewayLib.STORAGE_SLOT` and its config words.
     function test_storageLivesAtErc7201Slot() public {
         (ArticleAnchor hub,) = _proxyHub(address(this), address(0xACE), 8453);
         hub.setGateway(address(0x9999));
@@ -157,19 +162,19 @@ contract UpgradeTest is ArticleTestBase {
             keccak256(abi.encode(uint256(keccak256("eulerphi.storage.ArticleAnchor")) - 1)) & ~bytes32(uint256(0xff));
         assertEq(ArticleLib.STORAGE_SLOT, hubSlot, "hub slot constant == formula");
         uint256 base = uint256(vm.load(address(hub), hubSlot));
-        assertEq(address(uint160(base)), hub.admin(), "admin lives at the namespace base");
+        assertEq(address(uint160(base)), hub.router(), "router at the namespace base");
+        assertEq(uint64(base >> 160), hub.ethChainSelector(), "ethChainSelector packs with router at the base");
         uint256 word1 = uint256(vm.load(address(hub), bytes32(uint256(hubSlot) + 1)));
-        assertEq(address(uint160(word1)), hub.router(), "router at base+1");
-        assertEq(uint64(word1 >> 160), hub.ethChainSelector(), "ethChainSelector packs with router in base+1");
+        assertEq(address(uint160(word1)), hub.gateway(), "gateway at base+1");
         assertEq(
-            address(uint160(uint256(vm.load(address(hub), bytes32(uint256(hubSlot) + 2))))),
+            address(uint160(uint256(vm.load(address(hub), bytes32(uint256(hubSlot) + 1))))),
             hub.gateway(),
-            "gateway at base+2"
+            "gateway at base+1"
         );
         assertEq(
-            address(uint160(uint256(vm.load(address(hub), bytes32(uint256(hubSlot) + 2))))),
+            address(uint160(uint256(vm.load(address(hub), bytes32(uint256(hubSlot) + 1))))),
             hub.gateway(),
-            "gateway at base+2"
+            "gateway at base+1"
         );
 
         SubmissionGateway gw = _deployGateway(address(this), address(0xB0B), address(0x4B1), 999_999);
@@ -177,12 +182,10 @@ contract UpgradeTest is ArticleTestBase {
             & ~bytes32(uint256(0xff));
         assertEq(GatewayLib.STORAGE_SLOT, gwSlot, "gateway slot constant == formula");
         uint256 gbase = uint256(vm.load(address(gw), gwSlot));
-        assertEq(address(uint160(gbase)), gw.admin(), "gateway admin at the namespace base");
-        uint256 gword1 = uint256(vm.load(address(gw), bytes32(uint256(gwSlot) + 1)));
-        assertEq(address(uint160(gword1)), gw.router(), "router at base+1");
-        assertEq(uint64(gword1 >> 160), gw.baseChainSelector(), "baseChainSelector packs with router in base+1");
+        assertEq(address(uint160(gbase)), gw.router(), "router at the namespace base");
+        assertEq(uint64(gbase >> 160), gw.baseChainSelector(), "baseChainSelector packs with router at the base");
         assertEq(
-            address(uint160(uint256(vm.load(address(gw), bytes32(uint256(gwSlot) + 2))))), gw.hub(), "hub at base+2"
+            address(uint160(uint256(vm.load(address(gw), bytes32(uint256(gwSlot) + 1))))), gw.hub(), "hub at base+1"
         );
     }
 
@@ -191,12 +194,12 @@ contract UpgradeTest is ArticleTestBase {
     // the hub test of the same name above, with SubmissionGateway swapped in.
     // ------------------------------------------------------------------
 
-    function test_gatewayNonAdminUpgradeReverts() public {
+    function test_gatewayNonOwnerUpgradeReverts() public {
         (SubmissionGateway gw,) = _proxyGateway(address(this), address(0xB0B), address(0x4B1), 8453);
         SubmissionGateway newImpl = new SubmissionGateway();
 
         vm.prank(address(0xBAD));
-        vm.expectRevert(ISubmissionGateway.AdminOnly.selector);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(0xBAD)));
         gw.upgradeToAndCall(address(newImpl), "");
     }
 
@@ -213,7 +216,7 @@ contract UpgradeTest is ArticleTestBase {
         SubmissionGatewayV2Stub stub = new SubmissionGatewayV2Stub();
         gw.upgradeToAndCall(address(stub), "");
 
-        assertEq(gw.admin(), address(this), "admin survived");
+        assertEq(gw.owner(), address(this), "owner survived");
         assertEq(gw.router(), address(mock), "router survived");
         assertEq(gw.hub(), address(0x4B1), "hub survived");
         assertEq(gw.baseChainSelector(), 999_999, "selector survived");
@@ -243,30 +246,30 @@ contract UpgradeTest is ArticleTestBase {
         impl.initialize(address(0xBAD), address(0), address(0), 8453);
     }
 
-    /// @dev A fresh gateway proxy must refuse `admin_ = 0` — an admin-less
+    /// @dev A fresh gateway proxy must refuse `initialOwner = 0` — an owner-less
     /// gateway would be permanently un-upgradeable. The proxy needs NON-empty
     /// init data (OZ `ERC1967ProxyUninitialized`), so a harmless view call
     /// stands in; it leaves `_initialized` at 0.
-    function test_gatewayInitializeRejectsZeroAdmin() public {
+    function test_gatewayInitializeRejectsZeroOwner() public {
         SubmissionGateway impl = new SubmissionGateway();
         SubmissionGateway fresh =
-            SubmissionGateway(address(new ERC1967Proxy(address(impl), abi.encodeWithSignature("admin()"))));
+            SubmissionGateway(address(new ERC1967Proxy(address(impl), abi.encodeWithSignature("owner()"))));
 
-        vm.expectRevert(ISubmissionGateway.ZeroAdmin.selector);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableInvalidOwner.selector, address(0)));
         fresh.initialize(address(0), address(0), address(0), 8453);
 
         fresh.initialize(address(this), address(0xB0B), address(0x4B1), 8453); // failed attempt must not consume the
         // flag
-        assertEq(fresh.admin(), address(this), "legit init works");
+        assertEq(fresh.owner(), address(this), "legit init works");
     }
 
-    /// @dev Deploy-time safety: a botched `initialize(admin_ = 0)` bubbles out
+    /// @dev Deploy-time safety: a botched `initialize(initialOwner = 0)` bubbles out
     /// of the proxy constructor, so no broken, un-upgradeable gateway proxy is
     /// ever left behind on chain.
-    function test_gatewayZeroAdminProxyCannotBeConstructed() public {
+    function test_gatewayZeroOwnerProxyCannotBeConstructed() public {
         SubmissionGateway impl = new SubmissionGateway();
 
-        vm.expectRevert(ISubmissionGateway.ZeroAdmin.selector);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableInvalidOwner.selector, address(0)));
         new ERC1967Proxy(
             address(impl), abi.encodeCall(SubmissionGateway.initialize, (address(0), address(0), address(0), 8453))
         );
@@ -282,18 +285,140 @@ contract UpgradeTest is ArticleTestBase {
         impl.upgradeToAndCall(address(other), "");
     }
 
+    // ------------------------------------------------------------------
+    // Ownership: OZ Ownable2Step replaces the old admin — each test pins one
+    // guarantee of the two-step flow. Impl contracts are created BEFORE any
+    // expectRevert/prank so creates never sit inside an expectation window.
+    // ------------------------------------------------------------------
+
+    function test_transferOwnershipStartsTwoStep() public {
+        (ArticleAnchor hub,) = _proxyHub(address(this), address(0), 8453);
+        address newOwner = address(0x0B1);
+        ArticleAnchor newImpl = new ArticleAnchor();
+
+        vm.expectEmit(true, true, false, true);
+        emit OwnershipTransferStarted(address(this), newOwner);
+        hub.transferOwnership(newOwner);
+        assertEq(hub.owner(), address(this), "owner unchanged until accept");
+        assertEq(hub.pendingOwner(), newOwner, "pending owner set");
+
+        // The pending owner has NO power before accepting.
+        vm.prank(newOwner);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, newOwner));
+        hub.upgradeToAndCall(address(newImpl), "");
+    }
+
+    function test_acceptOwnershipCompletesTransfer() public {
+        (ArticleAnchor hub,) = _proxyHub(address(this), address(0), 8453);
+        address newOwner = address(0x0B1);
+        ArticleAnchor newImpl = new ArticleAnchor();
+        hub.transferOwnership(newOwner);
+
+        vm.prank(newOwner);
+        vm.expectEmit(true, true, false, true);
+        emit OwnershipTransferred(address(this), newOwner);
+        hub.acceptOwnership();
+        assertEq(hub.owner(), newOwner, "ownership moved");
+        assertEq(hub.pendingOwner(), address(0), "pending cleared");
+
+        // Old owner is out ...
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(this)));
+        hub.upgradeToAndCall(address(newImpl), "");
+
+        // ... the new owner holds the gate.
+        ArticleAnchorV2Stub stub = new ArticleAnchorV2Stub();
+        vm.prank(newOwner);
+        hub.upgradeToAndCall(address(stub), "");
+        assertEq(ArticleAnchorV2Stub(address(hub)).v2Ping(), 42, "new owner can upgrade");
+    }
+
+    function test_acceptOwnershipRejectsNonPending() public {
+        (ArticleAnchor hub,) = _proxyHub(address(this), address(0), 8453);
+        hub.transferOwnership(address(0x0B1));
+
+        vm.prank(address(0xBAD));
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(0xBAD)));
+        hub.acceptOwnership();
+    }
+
+    function test_transferOwnershipOnlyOwner() public {
+        (ArticleAnchor hub,) = _proxyHub(address(this), address(0), 8453);
+
+        vm.prank(address(0xBAD));
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(0xBAD)));
+        hub.transferOwnership(address(0xBAD));
+        assertEq(hub.pendingOwner(), address(0), "no pending owner was set");
+    }
+
+    function test_renounceOwnershipDisablesUpgrades() public {
+        (ArticleAnchor hub,) = _proxyHub(address(this), address(0), 8453);
+        (SubmissionGateway gw,) = _proxyGateway(address(this), address(0xB0B), address(0x4B1), 8453);
+        ArticleAnchor newImpl = new ArticleAnchor();
+        SubmissionGateway newGwImpl = new SubmissionGateway();
+
+        hub.renounceOwnership();
+        assertEq(hub.owner(), address(0), "hub ownerless");
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(this)));
+        hub.upgradeToAndCall(address(newImpl), "");
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(this)));
+        hub.setGateway(address(0x9999));
+
+        gw.renounceOwnership();
+        assertEq(gw.owner(), address(0), "gateway ownerless");
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(this)));
+        gw.upgradeToAndCall(address(newGwImpl), "");
+    }
+
+    function test_transferToZeroCancelsPending() public {
+        (ArticleAnchor hub,) = _proxyHub(address(this), address(0), 8453);
+        address newOwner = address(0x0B1);
+        hub.transferOwnership(newOwner);
+
+        hub.transferOwnership(address(0)); // OZ 2Step: zero cancels the pending transfer
+        assertEq(hub.pendingOwner(), address(0), "pending cleared by zero");
+        assertEq(hub.owner(), address(this), "owner unchanged by cancel");
+
+        vm.prank(newOwner);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, newOwner));
+        hub.acceptOwnership();
+    }
+
+    function test_gatewayTransferOwnershipTwoStep() public {
+        (SubmissionGateway gw,) = _proxyGateway(address(this), address(0xB0B), address(0x4B1), 8453);
+        SubmissionGatewayV2Stub stub = new SubmissionGatewayV2Stub();
+        address newOwner = address(0x0B2);
+
+        gw.transferOwnership(newOwner);
+        assertEq(gw.owner(), address(this), "gateway owner unchanged until accept");
+        assertEq(gw.pendingOwner(), newOwner, "gateway pending set");
+
+        vm.prank(newOwner);
+        gw.acceptOwnership();
+        assertEq(gw.owner(), newOwner, "gateway ownership moved");
+        assertEq(gw.pendingOwner(), address(0), "gateway pending cleared");
+
+        // Old owner loses the gate, new owner holds it.
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(this)));
+        gw.upgradeToAndCall(address(stub), "");
+        vm.prank(newOwner);
+        gw.upgradeToAndCall(address(stub), "");
+        assertEq(SubmissionGatewayV2Stub(address(gw)).v2Ping(), 42, "gateway new owner upgraded");
+    }
+
     /// @dev Canonical deploy shape (mirrors script/DeployHub.s.sol): an OZ
     /// ERC1967 proxy — with NO admin/authority entry at all — running
     /// `initialize` in its constructor, so `upgradeToAndCall` (gated by
     /// `_authorizeUpgrade`) is the ONLY way up. Returns the implementation so
     /// tests can assert what the proxy's ERC-1967 slots point at.
-    function _proxyHub(address admin_, address router_, uint64 chainSelector_)
+    function _proxyHub(address initialOwner_, address router_, uint64 chainSelector_)
         internal
         returns (ArticleAnchor hub, ArticleAnchor impl)
     {
         impl = new ArticleAnchor();
         address proxy = address(
-            new ERC1967Proxy(address(impl), abi.encodeCall(ArticleAnchor.initialize, (admin_, router_, chainSelector_)))
+            new ERC1967Proxy(
+                address(impl), abi.encodeCall(ArticleAnchor.initialize, (initialOwner_, router_, chainSelector_))
+            )
         );
         hub = ArticleAnchor(proxy);
     }
@@ -301,14 +426,15 @@ contract UpgradeTest is ArticleTestBase {
     /// @dev Gateway twin of `_proxyHub`: the same proxy shape
     /// (script/DeployGateway.s.sol), returning the implementation so tests
     /// can assert what the proxy's ERC-1967 slots point at.
-    function _proxyGateway(address admin_, address router_, address hub_, uint64 baseChainSelector_)
+    function _proxyGateway(address initialOwner_, address router_, address hub_, uint64 baseChainSelector_)
         internal
         returns (SubmissionGateway gw, SubmissionGateway impl)
     {
         impl = new SubmissionGateway();
         address proxy = address(
             new ERC1967Proxy(
-                address(impl), abi.encodeCall(SubmissionGateway.initialize, (admin_, router_, hub_, baseChainSelector_))
+                address(impl),
+                abi.encodeCall(SubmissionGateway.initialize, (initialOwner_, router_, hub_, baseChainSelector_))
             )
         );
         gw = SubmissionGateway(proxy);

@@ -43,12 +43,15 @@ abstract contract ArticleTestBase is Test {
     /// @dev Production shape: a LOCKED implementation behind an OZ ERC1967
     /// proxy, configuration passed as the proxy's init data — direct deploys
     /// are useless now (the bare impl is `_disableInitializers()`-locked).
-    function _deployHub(address admin_, address router_, uint64 chainSelector_) internal returns (ArticleAnchor hub) {
+    function _deployHub(address initialOwner_, address router_, uint64 chainSelector_)
+        internal
+        returns (ArticleAnchor hub)
+    {
         ArticleAnchor impl = new ArticleAnchor();
         hub = ArticleAnchor(
             address(
                 new ERC1967Proxy(
-                    address(impl), abi.encodeCall(ArticleAnchor.initialize, (admin_, router_, chainSelector_))
+                    address(impl), abi.encodeCall(ArticleAnchor.initialize, (initialOwner_, router_, chainSelector_))
                 )
             )
         );
@@ -57,7 +60,7 @@ abstract contract ArticleTestBase is Test {
     /// @dev Production shape: a LOCKED implementation behind an OZ ERC1967
     /// proxy, configuration passed as the proxy's init data — direct deploys
     /// are useless now (the bare impl is `_disableInitializers()`-locked).
-    function _deployGateway(address admin_, address router_, address hub_, uint64 baseChainSelector_)
+    function _deployGateway(address initialOwner_, address router_, address hub_, uint64 baseChainSelector_)
         internal
         returns (SubmissionGateway gw)
     {
@@ -66,7 +69,7 @@ abstract contract ArticleTestBase is Test {
             address(
                 new ERC1967Proxy(
                     address(impl),
-                    abi.encodeCall(SubmissionGateway.initialize, (admin_, router_, hub_, baseChainSelector_))
+                    abi.encodeCall(SubmissionGateway.initialize, (initialOwner_, router_, hub_, baseChainSelector_))
                 )
             )
         );

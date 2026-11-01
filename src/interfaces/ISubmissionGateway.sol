@@ -28,21 +28,19 @@ interface ISubmissionGateway {
     /// `keccak256(abi.encode(uint256(keccak256("eulerphi.storage.SubmissionGateway")) - 1)) & ~bytes32(uint256(0xff))`
     /// (frozen as `GatewayLib.STORAGE_SLOT`, proven by
     /// `test_storageLivesAtErc7201Slot`). Configuration only — the fee-lane
-    /// policy (`SUBMIT_GAS_LIMIT`) lives in `GatewayLib`, and the four reads
+    /// policy (`SUBMIT_GAS_LIMIT`) lives in `GatewayLib`, and the three reads
     /// live on `ISubmissionGatewayGetters`.
     ///
     /// @custom:storage-location erc7201:eulerphi.storage.SubmissionGateway
     struct Storage {
-        /// @dev Slot 0.
-        address admin;
-        /// @dev Slot 1, bytes 0..20.
+        /// @dev Slot 0, bytes 0..20.
         address router;
-        /// @dev Slot 1, bytes 20..28 — packs with `router` (20 + 8 <= 32): this
+        /// @dev Slot 0, bytes 20..28 — packs with `router` (20 + 8 <= 32): this
         /// pairing is NEW with this layout (the pre-proxy gateway held no
         /// storage at all) and exists because `submitArticle` reads both, so
         /// they share one cold word.
         uint64 baseChainSelector;
-        /// @dev Slot 2.
+        /// @dev Slot 1.
         address hub;
     }
 
@@ -57,14 +55,11 @@ interface ISubmissionGateway {
 
     // ---------------------------------------------------------------------
     // Errors (thrown by the implementation; declared here so the ABI and the
-    // docs of every failure mode live with the API they belong to)
+    // docs of every failure mode live with the API they belong to. Access
+    // control — `OwnableUnauthorizedAccount`, `OwnableInvalidOwner` — is
+    // declared by OZ's `OwnableUpgradeable`, never redeclared here.)
     // ---------------------------------------------------------------------
 
-    /// @notice Caller is not the `admin`.
-    error AdminOnly();
-    /// @notice `initialize` was called with `admin_ = address(0)` — an
-    /// admin-less gateway could never be upgraded.
-    error ZeroAdmin();
     /// @notice The payload's `deadline` is already in the past.
     error Expired();
     /// @notice `leafDigest` is not `keccak256(abi.encode(payload))`.
@@ -86,8 +81,9 @@ interface ISubmissionGateway {
     /// the bare implementation is locked forever by `_disableInitializers()`
     /// in its own constructor, so no stranger can ever own it.
     /// @dev Reverts `Initializable.InvalidInitialization()` on a second call,
-    /// and `ZeroAdmin()` on `admin_ = address(0)`.
-    function initialize(address admin_, address router_, address hub_, uint64 baseChainSelector_) external;
+    /// and OZ's `OwnableInvalidOwner(address(0))` on `initialOwner = address(0)`
+    /// (the zero check lives in `__Ownable_init`).
+    function initialize(address initialOwner, address router_, address hub_, uint64 baseChainSelector_) external;
 
     // ---------------------------------------------------------------------
     // Paid entry lane: Ethereum -> hub

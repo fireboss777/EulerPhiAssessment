@@ -5,6 +5,7 @@ import { ArticleAnchorGetters } from "./ArticleAnchorGetters.sol";
 import { Client } from "./interfaces/Client.sol";
 import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
 import { ArticleLib } from "./libraries/ArticleLib.sol";
+import { Ownable2StepUpgradeable } from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import { ECDSA } from "solady/utils/ECDSA.sol";
@@ -15,17 +16,22 @@ import { MerkleTreeLib } from "solady/utils/MerkleTreeLib.sol";
 /// @title ArticleAnchor — the canonical journal & batch root registry (hub).
 /// @notice Every external entry point, getter, constant and event is declared
 /// and documented on `IArticleAnchor`, which this contract inherits — read the
-/// interface for the API. Its ERC-7201 namespace (slot + pointer) and its whole
+/// interface for the API. Ownership and the upgrade gate come from OZ's
+/// `Ownable2StepUpgradeable` (`owner()`, two-step `transferOwnership`/
+/// `acceptOwnership`, `renounceOwnership`) — declared and documented by OZ,
+/// not redeclared here. Its ERC-7201 namespace (slot + pointer) and its whole
 /// batch/signature policy live in `ArticleLib` as `public constant`s, so
 /// this contract declares NO state variable and NO constant. Only
 /// implementation-side members (constructor, modifiers, `internal` helpers)
 /// are documented here.
-contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, EIP712, UUPSUpgradeable {
-    modifier onlyAdmin() {
-        _checkAdmin();
-        _;
-    }
-
+contract ArticleAnchor is
+    IArticleAnchor,
+    ArticleAnchorGetters,
+    Initializable,
+    EIP712,
+    UUPSUpgradeable,
+    Ownable2StepUpgradeable
+{
     /// @custom:oz-upgrades-unsafe-allow constructor
     /// @dev OZ best practice (docs, `Initializable`): a contract deployed
     /// behind a proxy writes NO configuration here — constructor state would
@@ -41,16 +47,15 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
     // ---------------------------------------------------------------------
 
     /// @inheritdoc IArticleAnchor
-    function initialize(address admin_, address router_, uint64 chainSelector_) external initializer {
-        require(admin_ != address(0), ZeroAdmin());
+    function initialize(address initialOwner, address router_, uint64 chainSelector_) external initializer {
+        __Ownable_init(initialOwner);
         Storage storage $ = ArticleLib.getStorage();
-        $.admin = admin_;
         $.router = router_;
         $.ethChainSelector = chainSelector_;
     }
 
     /// @inheritdoc IArticleAnchor
-    function setGateway(address gateway_) external onlyAdmin {
+    function setGateway(address gateway_) external onlyOwner {
         ArticleLib.getStorage().gateway = gateway_;
     }
 
@@ -100,7 +105,7 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
     }
 
     // ---------------------------------------------------------------------
-    // Views — verification (the 13 state getters live in `ArticleAnchorGetters`)
+    // Views — verification (the 12 state getters live in `ArticleAnchorGetters`)
     // ---------------------------------------------------------------------
 
     /// @inheritdoc IArticleAnchor
@@ -156,10 +161,10 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
         emit Submitted(payload.author, msg.sender, leafDigest);
     }
 
-    /// @dev The guard IS the `onlyAdmin` modifier, hence the empty body: OZ
+    /// @dev The guard IS OZ's `onlyOwner` modifier, hence the empty body: OZ
     /// invokes this hook from `upgradeToAndCall` before writing the ERC-1967
     /// implementation slot, and `msg.sender` survives the delegatecall hop.
-    function _authorizeUpgrade(address) internal view override onlyAdmin { }
+    function _authorizeUpgrade(address) internal view override onlyOwner { }
 
     /// @dev Contract-side tree build over `journal[start..end)` in Solady's
     /// heap layout (pair-sorted keccak; leaf k sits at 2L-2-k, node i hashes
@@ -177,14 +182,5 @@ contract ArticleAnchor is IArticleAnchor, ArticleAnchorGetters, Initializable, E
 
     function _domainNameAndVersion() internal pure override returns (string memory, string memory) {
         return ("EulerPhiArticle", "1");
-    }
-
-    /// @dev The gate itself, pulled out of `onlyAdmin`: a modifier body is
-    /// inlined at every use site, so one shared copy is smaller than two
-    /// (`forge lint: unwrapped-modifier-logic`) — same storage read, same
-    /// `AdminOnly()` revert, verified by the admin tests in `Upgrade.t.sol`.
-    function _checkAdmin() private view {
-        Storage storage $ = ArticleLib.getStorage();
-        require(msg.sender == $.admin, AdminOnly());
     }
 }

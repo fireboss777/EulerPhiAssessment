@@ -2,11 +2,11 @@
 pragma solidity ^0.8.27;
 
 /// @title ISubmissionGatewayGetters — the gateway's read API, declared in exactly ONE place.
-/// @notice The 4 field getters over the gateway's ERC-7201 namespace. Declared
+/// @notice The 3 field getters over the gateway's ERC-7201 namespace. Declared
 /// here, implemented once in `SubmissionGatewayGetters`, which
-/// `SubmissionGateway` inherits — so `admin()` is a declaration in exactly ONE
-/// file and code in exactly ONE contract, with nothing anywhere else holding a
-/// copy.
+/// `SubmissionGateway` inherits — so each getter is a declaration in exactly
+/// ONE file and code in exactly ONE contract, with nothing anywhere else
+/// holding a copy.
 ///
 /// @dev Direct reads: every body is an `sload` in the account that owns the
 /// namespace — the only account that CAN read it, since the EVM has no opcode
@@ -16,13 +16,8 @@ pragma solidity ^0.8.27;
 /// the implementations honest — each body is checked by the compiler against
 /// this file, so a signature change breaks the build.
 interface ISubmissionGatewayGetters {
-    /// @notice The only key allowed to upgrade the gateway implementation —
-    /// set exactly once by `initialize`, no transfer function (same policy as
-    /// the hub's admin).
-    function admin() external view returns (address);
-
     /// @notice Chainlink Router on Ethereum: where fee quotes and `ccipSend`
-    /// go. Storage, so an admin upgrade can retarget it — never a setter.
+    /// go. Storage, so an owner upgrade can retarget it — never a setter.
     function router() external view returns (address);
 
     /// @notice The `ArticleAnchor` proxy on the hub chain: receiver of the

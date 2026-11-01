@@ -4,7 +4,7 @@ pragma solidity ^0.8.27;
 import { ISubmissionGatewayGetters } from "./interfaces/ISubmissionGatewayGetters.sol";
 import { GatewayLib } from "./libraries/GatewayLib.sol";
 
-/// @title SubmissionGatewayGetters — the gateway's 4 read getters, implemented once, here.
+/// @title SubmissionGatewayGetters — the gateway's 3 read getters, implemented once, here.
 /// @notice `SubmissionGateway` inherits this contract instead of writing the
 /// getters itself, so the gateway main contract keeps only protocol behaviour
 /// (paid lane, lifecycle, upgrade gate).
@@ -14,11 +14,6 @@ import { GatewayLib } from "./libraries/GatewayLib.sol";
 /// contract carries neither; it stays `abstract` (never deployed on its own)
 /// because it is a read layer, not a product.
 abstract contract SubmissionGatewayGetters is ISubmissionGatewayGetters {
-    /// @inheritdoc ISubmissionGatewayGetters
-    function admin() external view returns (address) {
-        return GatewayLib.getStorage().admin;
-    }
-
     /// @inheritdoc ISubmissionGatewayGetters
     function router() external view returns (address) {
         return GatewayLib.getStorage().router;

@@ -7,22 +7,27 @@ import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
 import { IRouterClient } from "./interfaces/IRouterClient.sol";
 import { ISubmissionGateway } from "./interfaces/ISubmissionGateway.sol";
 import { GatewayLib } from "./libraries/GatewayLib.sol";
+import { Ownable2StepUpgradeable } from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /// @title SubmissionGateway — the L1 endpoint (paid entry lane, UUPS proxy).
 /// @notice Every external entry point and event is declared and documented on
 /// `ISubmissionGateway`, which this contract inherits — read the interface for
-/// the API (including the paid-lane / no-ecrecover design notes). Its ERC-7201
+/// the API (including the paid-lane / no-ecrecover design notes). Ownership
+/// and the upgrade gate come from OZ's `Ownable2StepUpgradeable` (`owner()`,
+/// two-step `transferOwnership`/`acceptOwnership`, `renounceOwnership`) —
+/// declared and documented by OZ, not redeclared here. Its ERC-7201
 /// namespace (slot + pointer) and fee-lane policy live in `GatewayLib`, so
 /// this contract declares NO state variable and NO constant of its own.
 /// Only implementation-side members are documented here.
-contract SubmissionGateway is ISubmissionGateway, SubmissionGatewayGetters, Initializable, UUPSUpgradeable {
-    modifier onlyAdmin() {
-        _checkAdmin();
-        _;
-    }
-
+contract SubmissionGateway is
+    ISubmissionGateway,
+    SubmissionGatewayGetters,
+    Initializable,
+    UUPSUpgradeable,
+    Ownable2StepUpgradeable
+{
     /// @custom:oz-upgrades-unsafe-allow constructor
     /// @dev OZ best practice (docs, `Initializable`): a contract deployed
     /// behind a proxy writes NO configuration here — constructor state would
@@ -38,10 +43,12 @@ contract SubmissionGateway is ISubmissionGateway, SubmissionGatewayGetters, Init
     // ------------------------------------------------------------------
 
     /// @inheritdoc ISubmissionGateway
-    function initialize(address admin_, address router_, address hub_, uint64 baseChainSelector_) external initializer {
-        require(admin_ != address(0), ZeroAdmin());
+    function initialize(address initialOwner, address router_, address hub_, uint64 baseChainSelector_)
+        external
+        initializer
+    {
+        __Ownable_init(initialOwner);
         Storage storage $ = GatewayLib.getStorage();
-        $.admin = admin_;
         $.router = router_;
         $.hub = hub_;
         $.baseChainSelector = baseChainSelector_;
@@ -87,16 +94,8 @@ contract SubmissionGateway is ISubmissionGateway, SubmissionGatewayGetters, Init
     // Upgrade
     // ------------------------------------------------------------------
 
-    /// @dev The guard IS the `onlyAdmin` modifier, hence the empty body: OZ
+    /// @dev The guard IS OZ's `onlyOwner` modifier, hence the empty body: OZ
     /// invokes this hook from `upgradeToAndCall` before writing the ERC-1967
     /// implementation slot, and `msg.sender` survives the delegatecall hop.
-    function _authorizeUpgrade(address) internal view override onlyAdmin { }
-
-    /// @dev The gate itself, pulled out of `onlyAdmin`: a modifier body is
-    /// inlined at every use site, so one shared copy is smaller than two
-    /// (`forge lint: unwrapped-modifier-logic`) — same storage read, same
-    /// `AdminOnly()` revert, verified by the gateway tests in `Upgrade.t.sol`.
-    function _checkAdmin() private view {
-        require(msg.sender == GatewayLib.getStorage().admin, AdminOnly());
-    }
+    function _authorizeUpgrade(address) internal view override onlyOwner { }
 }

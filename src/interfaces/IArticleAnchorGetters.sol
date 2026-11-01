@@ -2,9 +2,9 @@
 pragma solidity ^0.8.27;
 
 /// @title IArticleAnchorGetters — the hub's read API, declared in exactly ONE place.
-/// @notice The 13 field getters over the hub's ERC-7201 namespace. Declared
+/// @notice The 12 field getters over the hub's ERC-7201 namespace. Declared
 /// here, implemented once in `ArticleAnchorGetters`, which `ArticleAnchor`
-/// inherits — so `admin()` is a declaration in exactly ONE file and code in
+/// inherits — so each getter is a declaration in exactly ONE file and code in
 /// exactly ONE contract, with nothing anywhere else holding a copy.
 ///
 /// @dev Direct reads: every body is an `sload` in the account that owns the
@@ -15,11 +15,6 @@ pragma solidity ^0.8.27;
 /// the implementations honest — each body is checked by the compiler against
 /// this file, so a signature change breaks the build.
 interface IArticleAnchorGetters {
-    /// @notice The only key allowed to upgrade the implementation and to wire
-    /// the gateway. Set once (constructor / `initialize`) and never transferable
-    /// — deploy with a multisig or timelock from day one.
-    function admin() external view returns (address);
-
     /// @notice Chainlink Router of the CCIP lane; also the gate that
     /// must be `msg.sender` for any inbound delivery.
     function router() external view returns (address);

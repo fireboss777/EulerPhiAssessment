@@ -5,7 +5,7 @@ import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
 import { IArticleAnchorGetters } from "./interfaces/IArticleAnchorGetters.sol";
 import { ArticleLib } from "./libraries/ArticleLib.sol";
 
-/// @title ArticleAnchorGetters — the hub's 13 read getters, implemented once, here.
+/// @title ArticleAnchorGetters — the hub's 12 read getters, implemented once, here.
 /// @notice `ArticleAnchor` inherits this contract instead of writing the
 /// getters itself, so the hub main contract keeps only protocol behaviour
 /// (lifecycle, submission, anchoring).
@@ -15,11 +15,6 @@ import { ArticleLib } from "./libraries/ArticleLib.sol";
 /// contract carries neither; it stays `abstract` (never deployed on its own)
 /// because it is a read layer, not a product.
 abstract contract ArticleAnchorGetters is IArticleAnchorGetters {
-    /// @inheritdoc IArticleAnchorGetters
-    function admin() external view returns (address) {
-        return ArticleLib.getStorage().admin;
-    }
-
     /// @inheritdoc IArticleAnchorGetters
     function router() external view returns (address) {
         return ArticleLib.getStorage().router;
