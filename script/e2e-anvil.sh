@@ -28,7 +28,7 @@ MOCK=$(printf '%s\n' "$MOCK_OUT" | grep -oE "Deployed to: 0x[0-9a-fA-F]{40}" | h
 [ -n "$MOCK" ] || { echo "FAIL: mock deploy"; printf '%s\n' "$MOCK_OUT"; exit 1; }
 echo "== mock router $MOCK"
 
-HUB_OUT=$(HUB_OWNER=$ADMIN HUB_ROUTER=$MOCK HUB_ETH_CHAIN_SELECTOR=8453 \
+HUB_OUT=$(HUB_OWNER=$ADMIN HUB_ROUTER=$MOCK \
   forge script script/DeployHub.s.sol --rpc-url "$RPC" --private-key "$PK" --broadcast 2>&1)
 PROXY=$(printf '%s\n' "$HUB_OUT" | grep -A3 HUB_PROXY | grep -oE "0x[0-9a-fA-F]{40}" | head -1)
 [ -n "$PROXY" ] || { echo "FAIL: hub proxy not found"; printf '%s\n' "$HUB_OUT"; exit 1; }

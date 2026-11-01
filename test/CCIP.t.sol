@@ -19,8 +19,8 @@ contract CCIPTest is ArticleTestBase {
     function setUp() public override {
         super.setUp();
         mock = new MockRouter();
-        hub = _deployHub(address(this), address(mock), TEST_SEL);
-        hub.setGateway(GATEWAY);
+        hub = _deployHub(address(this), address(mock));
+        hub.setGateway(TEST_SEL, GATEWAY);
     }
 
     // ------------------------------------------------------------------
@@ -50,6 +50,33 @@ contract CCIPTest is ArticleTestBase {
 
         vm.expectRevert(IArticleAnchor.BadSender.selector);
         mock.deliver(address(hub), m);
+    }
+
+    function test_secondChainGatewayAccepted() public {
+        uint64 selB = 222_222;
+        address gatewayB = address(0xB0B);
+        hub.setGateway(selB, gatewayB);
+        assertEq(hub.gatewayAt(TEST_SEL), GATEWAY, "first chain still registered");
+        assertEq(hub.gatewayAt(selB), gatewayB, "second chain registered");
+        assertEq(hub.gatewayAt(999_999), address(0), "unknown chain reads 0");
+
+        (bytes32 leafA, bytes memory sigA, IArticleAnchor.ArticleSubmission memory pA) = _signedLeaf(AUTHOR_KEY, 7);
+        mock.deliver(address(hub), _inbound(TEST_SEL, GATEWAY, leafA, sigA, pA));
+        vm.warp(block.timestamp + 1 hours); // clear the per-author rate limit
+        (bytes32 leafB, bytes memory sigB, IArticleAnchor.ArticleSubmission memory pB) = _signedLeaf(AUTHOR_KEY, 8);
+        mock.deliver(address(hub), _inbound(selB, gatewayB, leafB, sigB, pB));
+
+        assertEq(hub.journalLength(), 2, "both source chains journaled");
+        assertEq(hub.journal(0), leafA, "chain A leaf");
+        assertEq(hub.journal(1), leafB, "chain B leaf");
+    }
+
+    function test_revokedChainReverts() public {
+        hub.setGateway(TEST_SEL, address(0));
+        assertEq(hub.gatewayAt(TEST_SEL), address(0), "revoked reads 0");
+        (bytes32 leaf, bytes memory sig, IArticleAnchor.ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 9);
+        vm.expectRevert(IArticleAnchor.BadChain.selector);
+        mock.deliver(address(hub), _inbound(TEST_SEL, GATEWAY, leaf, sig, p));
     }
 
     function test_replayAcrossLanesReverts() public {

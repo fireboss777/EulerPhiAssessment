@@ -2,7 +2,7 @@
 pragma solidity ^0.8.27;
 
 /// @title IArticleAnchorGetters — the hub's read API, declared in exactly ONE place.
-/// @notice The 12 field getters over the hub's ERC-7201 namespace. Declared
+/// @notice The 11 field getters over the hub's ERC-7201 namespace. Declared
 /// here, implemented once in `ArticleAnchorGetters`, which `ArticleAnchor`
 /// inherits — so each getter is a declaration in exactly ONE file and code in
 /// exactly ONE contract, with nothing anywhere else holding a copy.
@@ -19,12 +19,10 @@ interface IArticleAnchorGetters {
     /// must be `msg.sender` for any inbound delivery.
     function router() external view returns (address);
 
-    /// @notice Chainlink chain selector of the opposite side (not a chain id).
-    function ethChainSelector() external view returns (uint64);
-
-    /// @notice The pinned L1 `SubmissionGateway`: sender whitelist for inbound
-    /// submissions. Wired post-deploy.
-    function gateway() external view returns (address);
+    /// @notice The gateway registered for source chain `chainSelector` — the only
+    /// sender accepted from it. 0 = chain not authorized (or revoked).
+    /// @param chainSelector Chainlink selector of the source chain.
+    function gatewayAt(uint64 chainSelector) external view returns (address);
 
     /// @notice Leaf `i` of the append-only journal (`keccak256(abi.encode(payload))`).
     /// @param i Journal index, `0 <= i < journalLength()`.

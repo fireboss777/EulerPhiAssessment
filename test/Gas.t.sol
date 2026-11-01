@@ -91,8 +91,8 @@ contract GasTest is ArticleTestBase {
     }
 
     function _newHub(address router) internal returns (ArticleAnchor) {
-        ArticleAnchor hub = _deployHub(address(this), router, SEL);
-        hub.setGateway(address(0x9999));
+        ArticleAnchor hub = _deployHub(address(this), router);
+        hub.setGateway(SEL, address(0x9999));
         return hub;
     }
 

@@ -82,9 +82,9 @@ contract GatewayTest is ArticleTestBase {
 
     function test_gatewayPayloadLandsInHub() public {
         // Hub pinned to this gateway, mock as shared router.
-        ArticleAnchor hub = _deployHub(address(this), address(mock), BASE_SEL);
-        hub.setGateway(address(gw));
-        assertEq(hub.gateway(), address(gw), "wiring");
+        ArticleAnchor hub = _deployHub(address(this), address(mock));
+        hub.setGateway(BASE_SEL, address(gw));
+        assertEq(hub.gatewayAt(BASE_SEL), address(gw), "wiring");
 
         uint256 key = AUTHOR_KEY;
         IArticleAnchor.ArticleSubmission memory p = _payloadFor(vm.addr(key), 12);

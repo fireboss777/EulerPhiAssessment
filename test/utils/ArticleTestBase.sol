@@ -37,23 +37,16 @@ abstract contract ArticleTestBase is Test {
     }
 
     function _deployHub() internal returns (ArticleAnchor hub) {
-        hub = _deployHub(address(this), address(0), uint64(block.chainid));
+        hub = _deployHub(address(this), address(0));
     }
 
     /// @dev Production shape: a LOCKED implementation behind an OZ ERC1967
     /// proxy, configuration passed as the proxy's init data — direct deploys
     /// are useless now (the bare impl is `_disableInitializers()`-locked).
-    function _deployHub(address initialOwner_, address router_, uint64 chainSelector_)
-        internal
-        returns (ArticleAnchor hub)
-    {
+    function _deployHub(address initialOwner_, address router_) internal returns (ArticleAnchor hub) {
         ArticleAnchor impl = new ArticleAnchor();
         hub = ArticleAnchor(
-            address(
-                new ERC1967Proxy(
-                    address(impl), abi.encodeCall(ArticleAnchor.initialize, (initialOwner_, router_, chainSelector_))
-                )
-            )
+            address(new ERC1967Proxy(address(impl), abi.encodeCall(ArticleAnchor.initialize, (initialOwner_, router_))))
         );
     }
 

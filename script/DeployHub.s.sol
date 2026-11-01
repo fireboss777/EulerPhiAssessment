@@ -11,19 +11,17 @@ import { console } from "forge-std/console.sol";
 /// only upgrade route is `upgradeToAndCall` gated by `_authorizeUpgrade`.
 /// The proxy runs `initialize` in its constructor via `data`.
 ///
-/// Env: HUB_OWNER, HUB_ROUTER, HUB_ETH_CHAIN_SELECTOR
-/// Post-deploy: run DeployGateway, then `setGateway(gatewayAddress)` as owner.
+/// Env: HUB_OWNER, HUB_ROUTER
+/// Post-deploy: run DeployGateway, then authorize it per source chain:
+/// `setGateway(chainSelector, gatewayAddress)` as owner.
 contract DeployHub is Script {
     function run() external returns (address proxy) {
         address owner = vm.envAddress("HUB_OWNER");
         address router = vm.envAddress("HUB_ROUTER");
-        uint64 selector = uint64(vm.envUint("HUB_ETH_CHAIN_SELECTOR"));
 
         vm.startBroadcast();
         ArticleAnchor impl = new ArticleAnchor();
-        proxy = address(
-            new ERC1967Proxy(address(impl), abi.encodeCall(ArticleAnchor.initialize, (owner, router, selector)))
-        );
+        proxy = address(new ERC1967Proxy(address(impl), abi.encodeCall(ArticleAnchor.initialize, (owner, router))));
         vm.stopBroadcast();
         console.log("HUB_PROXY", proxy);
     }

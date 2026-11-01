@@ -47,16 +47,17 @@ contract ArticleAnchor is
     // ---------------------------------------------------------------------
 
     /// @inheritdoc IArticleAnchor
-    function initialize(address initialOwner, address router_, uint64 chainSelector_) external initializer {
+    function initialize(address initialOwner, address router_) external initializer {
         __Ownable_init(initialOwner);
         Storage storage $ = ArticleLib.getStorage();
         $.router = router_;
-        $.ethChainSelector = chainSelector_;
     }
 
     /// @inheritdoc IArticleAnchor
-    function setGateway(address gateway_) external onlyOwner {
-        ArticleLib.getStorage().gateway = gateway_;
+    function setGateway(uint64 chainSelector, address gateway_) external onlyOwner {
+        Storage storage $ = ArticleLib.getStorage();
+        $.gatewayAt[chainSelector] = gateway_;
+        emit GatewaySet(chainSelector, gateway_);
     }
 
     // ---------------------------------------------------------------------
@@ -69,7 +70,7 @@ contract ArticleAnchor is
     }
 
     // ---------------------------------------------------------------------
-    // CCIP lane — inbound only (L1 gateway -> hub)
+    // CCIP lane — inbound only (source-chain gateways -> hub)
     // ---------------------------------------------------------------------
 
     /// @inheritdoc IArticleAnchor
@@ -121,15 +122,18 @@ contract ArticleAnchor is
     // Internal helpers (inbound lane, submission core, EIP-712 & UUPS wiring)
     // ---------------------------------------------------------------------
 
-    /// @dev The pinned inbound lane — (router, sourceChainSelector, sender), then
-    /// decode and hand to `_submit`. Only reachable through `ccipReceive` (the
-    /// entry Chainlink's interface mandates), which forwards here without
-    /// checking anything itself, so these three pins ARE the lane's security.
+    /// @dev The inbound lane — router, then `gatewayAt` keyed by the message's
+    /// `sourceChainSelector` (0 = unregistered → `BadChain`), then sender == that
+    /// gateway, then decode and hand to `_submit`. Only reachable through
+    /// `ccipReceive` (the entry Chainlink's interface mandates), which forwards
+    /// here without checking anything itself, so these three checks ARE the
+    /// lane's security.
     function _consumeSubmittedArticle(Client.Any2EVMMessage calldata message) internal {
         Storage storage $ = ArticleLib.getStorage();
         require(msg.sender == address($.router), NotRouter());
-        require(message.sourceChainSelector == $.ethChainSelector, BadChain());
-        require(abi.decode(message.sender, (address)) == $.gateway, BadSender());
+        address gateway = $.gatewayAt[message.sourceChainSelector];
+        require(gateway != address(0), BadChain());
+        require(abi.decode(message.sender, (address)) == gateway, BadSender());
         (bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload) =
             abi.decode(message.data, (bytes32, bytes, ArticleSubmission));
         _submit(leafDigest, sig, payload);

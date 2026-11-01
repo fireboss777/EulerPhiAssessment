@@ -5,7 +5,7 @@ import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
 import { IArticleAnchorGetters } from "./interfaces/IArticleAnchorGetters.sol";
 import { ArticleLib } from "./libraries/ArticleLib.sol";
 
-/// @title ArticleAnchorGetters — the hub's 12 read getters, implemented once, here.
+/// @title ArticleAnchorGetters — the hub's 11 read getters, implemented once, here.
 /// @notice `ArticleAnchor` inherits this contract instead of writing the
 /// getters itself, so the hub main contract keeps only protocol behaviour
 /// (lifecycle, submission, anchoring).
@@ -21,13 +21,8 @@ abstract contract ArticleAnchorGetters is IArticleAnchorGetters {
     }
 
     /// @inheritdoc IArticleAnchorGetters
-    function ethChainSelector() external view returns (uint64) {
-        return ArticleLib.getStorage().ethChainSelector;
-    }
-
-    /// @inheritdoc IArticleAnchorGetters
-    function gateway() external view returns (address) {
-        return ArticleLib.getStorage().gateway;
+    function gatewayAt(uint64 chainSelector) external view returns (address) {
+        return ArticleLib.getStorage().gatewayAt[chainSelector];
     }
 
     /// @inheritdoc IArticleAnchorGetters
