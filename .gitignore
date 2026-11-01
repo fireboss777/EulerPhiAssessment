@@ -18,3 +18,7 @@ dependencies/
 
 # Superpowers workspaces (git-ignored by design)
 .superpowers/
+
+# Certora (cli internals + per-run report dirs; conf + specs stay tracked)
+.certora_internal/
+emv-*-certora-*/
