@@ -24,7 +24,7 @@ contract CCIPTest is ArticleTestBase {
     }
 
     // ------------------------------------------------------------------
-    // Inbound lane (Ethereum L1 gateway -> hub)
+    // Inbound lane (source-chain gateways -> hub)
     // ------------------------------------------------------------------
 
     function test_whitelistedSourceSubmits() public {
@@ -87,7 +87,7 @@ contract CCIPTest is ArticleTestBase {
         assertEq(hub.journalLength(), 1, "direct submit landed");
         vm.warp(block.timestamp + 1 hours); // clear the per-author rate limit
 
-        // Lane 2: the very same signed payload delivered via CCIP from L1.
+        // Lane 2: the very same signed payload delivered via CCIP from a source chain.
         Client.Any2EVMMessage memory m = _inbound(TEST_SEL, GATEWAY, leaf, sig, p);
         vm.expectRevert(IArticleAnchor.DuplicateUuid.selector);
         mock.deliver(address(hub), m);

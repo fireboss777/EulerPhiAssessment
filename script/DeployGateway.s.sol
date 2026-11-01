@@ -6,7 +6,7 @@ import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy
 import { Script } from "forge-std/Script.sol";
 import { console } from "forge-std/console.sol";
 
-/// @notice Deploys the L1 SubmissionGateway behind OpenZeppelin's ERC1967
+/// @notice Deploys a SubmissionGateway behind OpenZeppelin's ERC1967
 /// proxy — which has NO admin entry of its own (the ERC-1967 admin slot stays
 /// empty), so the only upgrade route is `upgradeToAndCall` gated by
 /// `_authorizeUpgrade` (`onlyOwner`, OZ `Ownable2Step`). The proxy runs
@@ -14,11 +14,11 @@ import { console } from "forge-std/console.sol";
 /// constructor via `data`.
 ///
 /// Env: GW_OWNER (the gateway's upgrade key — a multisig/timelock, the same
-/// advice as HUB_OWNER), GW_ROUTER (Chainlink Router on Ethereum), GW_HUB
+/// advice as HUB_OWNER), GW_ROUTER (Chainlink Router on the gateway's chain), GW_HUB
 /// (ArticleAnchor proxy address on the hub chain), GW_BASE_CHAIN_SELECTOR
 /// (hub chain selector).
 ///
-/// Deploy order: DeployHub -> DeployGateway -> (owner) setGateway(proxy) on the hub.
+/// Deploy order: DeployHub -> DeployGateway -> (owner) setGateway(chainSelector, proxy) on the hub.
 contract DeployGateway is Script {
     function run() external returns (address proxy) {
         address owner = vm.envAddress("GW_OWNER");

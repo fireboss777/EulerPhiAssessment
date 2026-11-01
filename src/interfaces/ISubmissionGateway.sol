@@ -3,20 +3,20 @@ pragma solidity ^0.8.27;
 
 import { IArticleAnchor } from "./IArticleAnchor.sol";
 
-/// @title SubmissionGateway — the L1 endpoint (paid entry lane, UUPS proxy).
+/// @title SubmissionGateway — the source-chain endpoint (paid entry lane, UUPS proxy).
 /// @notice Public ABI of the gateway, implemented by
 /// `src/SubmissionGateway.sol` (which inherits this interface, so the compiler
 /// keeps ABI and docs in lockstep). One role only:
 ///
 /// 1. Paid entry lane: `submitArticle` mirrors the hub's API plus `payable` —
-/// the caller funds L1 execution + the CCIP fee for the L2 leg, and one
-/// Ethereum transaction lands the payload in the hub's journal. Deliberately
+/// the caller funds execution on its own chain + the CCIP fee for the hub
+/// leg, and one transaction lands the payload in the hub's journal. Deliberately
 /// performs NO signature checks (decision 1a): EIP-712 domains are
 /// chain-bound, so the hub is the single signature authority — garbage
 /// messages are priced by the attached fee instead of rejected by ecrecover.
 ///
-/// @dev CCIP travels one direction only: this contract SENDS on Ethereum and
-/// the hub RECEIVES on its chain; every judgement happens at the destination.
+/// @dev CCIP travels one direction only: this contract SENDS on its own chain
+/// and the hub RECEIVES on the hub chain; every judgement happens at the destination.
 /// The gateway is proxied like the hub (OZ `ERC1967Proxy` + UUPS): its whole
 /// configuration lives in the ERC-7201 `Storage` struct below, so an upgrade
 /// never changes the address the hub pins. Its three reads live on
@@ -51,7 +51,7 @@ interface ISubmissionGateway {
     /// @notice A paid submission was forwarded toward the hub.
     /// @param submitter The gas + fee payer (the transaction is theirs).
     /// @param messageId Chainlink's message id for the hop.
-    event SubmittedOnL1(address indexed submitter, bytes32 indexed leafDigest, bytes32 messageId);
+    event Forwarded(address indexed submitter, bytes32 indexed leafDigest, bytes32 messageId);
 
     // ---------------------------------------------------------------------
     // Errors (thrown by the implementation; declared here so the ABI and the
@@ -86,10 +86,10 @@ interface ISubmissionGateway {
     function initialize(address initialOwner, address router_, address hub_, uint64 baseChainSelector_) external;
 
     // ---------------------------------------------------------------------
-    // Paid entry lane: Ethereum -> hub
+    // Paid entry lane: this chain -> hub
     // ---------------------------------------------------------------------
 
-    /// @notice One L1 transaction that lands a signed payload in the hub's journal.
+    /// @notice One transaction on this chain that lands a signed payload in the hub's journal.
     /// @dev Checks only chain-agnostic state before any fee moves (`deadline`,
     /// digest) and no signature — see decision 1a above. Quotes the CCIP fee,
     /// forwards exactly `fee`, refunds the excess (the upstream router keeps

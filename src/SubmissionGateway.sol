@@ -11,7 +11,7 @@ import { Ownable2StepUpgradeable } from "@openzeppelin/contracts-upgradeable/acc
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-/// @title SubmissionGateway — the L1 endpoint (paid entry lane, UUPS proxy).
+/// @title SubmissionGateway — the source-chain endpoint (paid entry lane, UUPS proxy).
 /// @notice Every external entry point and event is declared and documented on
 /// `ISubmissionGateway`, which this contract inherits — read the interface for
 /// the API (including the paid-lane / no-ecrecover design notes). Ownership
@@ -55,7 +55,7 @@ contract SubmissionGateway is
     }
 
     // ------------------------------------------------------------------
-    // Paid entry lane: Ethereum -> hub
+    // Paid entry lane: this chain -> hub
     // ------------------------------------------------------------------
 
     /// @inheritdoc ISubmissionGateway
@@ -80,7 +80,7 @@ contract SubmissionGateway is
         require(msg.value >= fee, InsufficientFee());
 
         bytes32 messageId = IRouterClient($.router).ccipSend{ value: fee }($.baseChainSelector, m);
-        emit SubmittedOnL1(msg.sender, leafDigest, messageId);
+        emit Forwarded(msg.sender, leafDigest, messageId);
 
         // Return the unused portion (router keeps overpayment; we don't).
         uint256 excess = msg.value - fee;

@@ -86,7 +86,8 @@ interface IArticleAnchor {
 
     /// @notice A signed payload entered the journal.
     /// @param author The byline — recovered from the EIP-712 signature, never trusted from args.
-    /// @param submitter The gas payer (may be a third-party relayer).
+    /// @param submitter Direct lane: the gas payer (may be a relayer). CCIP lane: the local
+    /// Chainlink router — the source-chain payer is the gateway's `Forwarded` submitter.
     /// @param leafDigest The journaled commitment.
     event Submitted(address indexed author, address indexed submitter, bytes32 leafDigest);
 

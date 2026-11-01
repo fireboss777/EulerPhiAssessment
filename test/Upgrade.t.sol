@@ -188,7 +188,7 @@ contract UpgradeTest is ArticleTestBase {
     }
 
     // ------------------------------------------------------------------
-    // Gateway: the same guarantees on the L1 contract — each test mirrors
+    // Gateway: the same guarantees on the gateway contract — each test mirrors
     // the hub test of the same name above, with SubmissionGateway swapped in.
     // ------------------------------------------------------------------
 
