@@ -23,7 +23,7 @@ end-to-end test all run through `forge`/`cast`. There is no JS/TS/npm anywhere
 git clone <this-repo> && cd <this-repo>
 forge soldeer install        # forge-std 1.17.0 + solady 0.1.26, from soldeer.lock
 forge build
-forge test                   # 49 tests, 8 suites
+forge test                   # 56 tests, 8 suites
 forge snapshot               # regenerates .gas-snapshot
 bash script/e2e-anvil.sh     # live end-to-end on anvil: submit → anchor
 ```
@@ -46,7 +46,7 @@ Dependencies are **Soldeer-managed only** (no git submodules, no npm):
 ```
                      Ethereum (L1)                                Base (L2)
 ┌───────────────────────────────────────────┐   ┌─────────────────────────────────────────────┐
-│  SubmissionGateway  (plain, immutable)    │   │  ArticleAnchor  (UUPS proxy)                │
+│  SubmissionGateway  (UUPS proxy)            │   │  ArticleAnchor  (UUPS proxy)              │
 │                                           │   │                                             │
 │  submitArticle(leaf, sig, payload)        │   │  submitArticle(leaf, sig, payload)          │
 │    payable · digest check only            │   │    public · EIP-712 authorship check        │
@@ -121,8 +121,10 @@ Trust decreases as you go down this ladder; each level inherits correctness
 from the one above and adds an assumption.
 
 **1. Hub (L2 canonical record) — strongest.**
-You trust: this code, the author's key (for their own bylines), the admin key
-(upgrade path), and Chainlink only for the cross-chain legs. Roots are derived
+You trust: this code, the author's key (for their own bylines), the two
+upgrade keys — the hub's admin on L2 (owns the journal) and `GW_ADMIN` on L1
+(owns the paid lane only: a compromised gateway admin reroutes messages and
+fees, never the journal) — and Chainlink only for the cross-chain legs. Roots are derived
 by the contract from the journal, so a compromised *keeper* gains nothing — it
 can withhold a call (delay), never lie about content.
 
@@ -154,9 +156,9 @@ production-shaped numbers, not direct-call ones.
 | `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **104,493** | ≈75k fixed window/tree overhead |
 | `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **654,503** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
 | `verifyAgainstBatch` — 10-leaf root | reader | **15,041** | an `eth_call` costs you nothing |
-| gateway `submitArticle` — our side | writer | **37,147** | + L1 gas + CCIP fee (router's execution on top) |
+| gateway `submitArticle` — our side | writer | **38,557** | + L1 gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 11,389 B runtime, `SubmissionGateway` 3,639 B
+Contract sizes: `ArticleAnchor` 11,389 B runtime, `SubmissionGateway` 7,224 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
@@ -176,7 +178,7 @@ affordable where per-article onchain storage would not be.
 
 ## Attack matrix ↔ tests
 
-49 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
+56 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
 
 | # | Threat | Defense | Test(s) |
 |---|---|---|---|
@@ -195,8 +197,8 @@ affordable where per-article onchain storage would not be.
 | 12 | Grief batches (early/late/empty closes) | `MIN_BATCH`/`MAX_BATCH`/`BATCH_DEADLINE`/`pending > 0` | `Batch.t.sol::test_anchorRequiresMinOrDeadline`, `Batch.t.sol::test_anchorAtMaxBatch`, `Batch.t.sol::test_emptyAnchorReverts` |
 | 13 | Prove a leaf that isn't in the batch (or is from another batch) | `MerkleProofLib` against the frozen root | `Batch.t.sol::test_verifyAgainstBatchFalse`, `Batch.t.sol::test_verifyAgainstBatchTrue` |
 | 14 | Merkle builder/verifier disagree (implementation bug) | differential vs hand-written `NaiveMerkle` + fuzz | `MerkleDifferential.t.sol::test_matchesNaiveReference` (256 runs), `test_oddLeafCounts`, `test_singleLeafRoot` |
-| 15 | Upgrade by anyone, or a second upgrade authority hiding beside the UUPS path | `_authorizeUpgrade` admin-only; the OZ `ERC1967Proxy` has **no admin entry at all** (ERC-1967 admin slot stays `0`); OZ `onlyProxy` blocks any attempt on the bare implementation | `Upgrade.t.sol::test_nonAdminUpgradeReverts`, `test_proxyHasNoAdminSlot`, `test_bareImplementationUpgradeReverts` |
-| 16 | Re-initialize (proxy *or* bare implementation), hijack gateway wiring, corrupt storage on upgrade | OZ `initializer` lock (bare impl `_disableInitializers()`-locked at construction) + zero-admin rejection, `setGateway` admin-only, ERC-7201 namespaced layout, append-only journal | `Upgrade.t.sol::test_initializeTwiceReverts`, `test_bareImplementationCannotBeInitialized`, `test_initializeRejectsZeroAdmin`, `test_setGatewayOnlyAdmin`, `test_journalPreservedAcrossUpgrade` |
+| 15 | Upgrade by anyone, or a second upgrade authority hiding beside the UUPS path | `_authorizeUpgrade` admin-only on both contracts; each contract's OZ `ERC1967Proxy` has **no admin entry at all** (ERC-1967 admin slot stays `0`); OZ `onlyProxy` blocks any attempt on either bare implementation | `Upgrade.t.sol::test_nonAdminUpgradeReverts`, `test_gatewayNonAdminUpgradeReverts`, `test_proxyHasNoAdminSlot`, `test_bareImplementationUpgradeReverts`, `test_gatewayBareImplementationUpgradeReverts` |
+| 16 | Re-initialize (proxy *or* bare implementation), hijack gateway wiring, corrupt storage on upgrade | OZ `initializer` lock (bare impl `_disableInitializers()`-locked at construction) + zero-admin rejection, `setGateway` admin-only, ERC-7201 namespaced layout, append-only journal | `Upgrade.t.sol::test_initializeTwiceReverts`, `test_gatewayInitializeTwiceReverts`, `test_bareImplementationCannotBeInitialized`, `test_gatewayBareImplementationCannotBeInitialized`, `test_initializeRejectsZeroAdmin`, `test_gatewayInitializeRejectsZeroAdmin`, `test_gatewayZeroAdminProxyCannotBeConstructed`, `test_setGatewayOnlyAdmin`, `test_journalPreservedAcrossUpgrade`, `test_gatewayConfigPreservedAcrossUpgrade` |
 | 17 | Spam one author's journal | `RATE_LIMIT = 1h` | `Submit.t.sol::test_rateLimit1hReverts` |
 | 18 | Submit an expired article | `block.timestamp ≤ deadline`, checked first on both lanes | `Submit.t.sol::test_expiredDeadlineReverts` |
 | 19 | Run off with / overcharge the gateway fee | `getFee` quote, `msg.value ≥ fee`, refund excess, gateway retains 0 | `Gateway.t.sol::test_insufficientFeeReverts`, `test_excessRefunded` |
@@ -283,33 +285,38 @@ product the proof is the point, so the journal wins. The rate limit, `uuid`
 dedup and batch window live in mappings precisely because those are
 *bookkeeping*, not *claims*.
 
-**ERC-7201 namespaced storage.** The hub declares no state variable: its whole
-layout is a `Storage` struct on its interface, addressed at
-`keccak256(abi.encode(uint256(keccak256("eulerphi.storage.ArticleAnchor")) - 1)) & ~bytes32(uint256(0xff))`
-and reached through a single `ArticleLib.getStorage()` pointer whose slot
-constant sits beside it (`ArticleLib.STORAGE_SLOT`): one pointer and one
-literal, living in a library instead of a `virtual`/`override` pair spread over
-two contracts
+**ERC-7201 namespaced storage.** Neither contract declares a state variable:
+each one's whole layout is a `Storage` struct on its interface, addressed at
+its own namespace — `eulerphi.storage.ArticleAnchor` or
+`eulerphi.storage.SubmissionGateway` — by the standard formula
+`keccak256(abi.encode(uint256(keccak256("<id>")) - 1)) & ~bytes32(uint256(0xff))`
+and reached through a single pointer whose slot constant sits beside it
+(`ArticleLib.STORAGE_SLOT`, `GatewayLib.STORAGE_SLOT`): one pointer and one
+literal per namespace, living in a library instead of a `virtual`/`override`
+pair spread over two contracts
 (assembly takes only number constants, hence the local copy inside the
-pointer). `test_storageLivesAtErc7201Slot` recomputes the formula from the
-namespace id, compares it against that constant and reads the raw slots —
-constant, id and contents must all agree. Payoffs: a future
+pointer). `test_storageLivesAtErc7201Slot` recomputes the formula from each
+namespace id, compares it against those constants and reads the raw slots —
+for both contracts, constant, id and contents must all agree. Payoffs: a future
 base contract or a field reordering cannot collide with this layout, because a
 namespace owns its own region of the slot space; the layout is auditable as one
 commented block instead of being implied by declaration order across the file;
 and `admin`/`router`/`ethChainSelector`/`gateway` keep exactly the packing the
 linear layout gave them (`router` + `ethChainSelector` share word 1, which is
 what `ccipReceive` reads together — the first migration attempt split them and
-paid +2,100 gas per delivery until the storage layout caught it). This is
-breaking for a proxy deployed at the old linear slots; no such deployment
-exists, and there is deliberately no dual-read migration.
+paid +2,100 gas per delivery until the storage layout caught it), while the
+gateway packs `router` + `baseChainSelector` into word 1 because
+`submitArticle` reads both. This is breaking for a proxy deployed at the old
+linear slots; no such deployment exists for either namespace (the gateway's
+notary-era layout never shipped a proxy either), and there is deliberately no
+dual-read migration.
 The namespace state is readable on chain only THROUGH the contract that owns
 it: the EVM has no opcode for reading another account's storage, so every getter
 is an `sload` inside the owner, living in a getter contract the owner inherits —
-`ArticleAnchorGetters` inside `ArticleAnchor`, behind its own interface
-(`IArticleAnchorGetters`): declared once, implemented once, inherited by
-exactly one contract. The gateway holds no state at all, so it has no getters
-to inherit. There is deliberately NO
+`ArticleAnchorGetters` inside `ArticleAnchor` (behind `IArticleAnchorGetters`)
+and `SubmissionGatewayGetters` inside `SubmissionGateway` (behind
+`ISubmissionGatewayGetters`) — each getter declared once, implemented once,
+inherited by exactly one contract. There is deliberately NO
 wrapper contract around them — a facade could only `staticcall` the owner back,
 adding a second copy of every function (plus a second chain to deploy on) to
 read the same words. Reading ANOTHER account's raw slots is an off-chain
@@ -360,48 +367,58 @@ caught lying, because the journal settles what it may claim.
 
 ### UUPS trust note and renounce plan
 
-The admin key is the trust floor of the hub: it can upgrade the implementation
-and therefore control the journal. Mitigations in place, all tested:
+The two admin keys are the trust floor of the system: the hub's admin can
+upgrade the implementation and therefore control the journal, and `GW_ADMIN`
+can upgrade the gateway — enough to reroute or halt the paid lane (an upgrade
+rewrites `router`/`hub`/`baseChainSelector`), never to touch the journal,
+whose every check runs on the hub, out of the gateway's reach. Mitigations in
+place, all tested, and each applies to **both** contracts:
 
-- **Single upgrade path**: the hub sits behind OpenZeppelin's `ERC1967Proxy`,
+- **Single upgrade path**: each contract sits behind its own OpenZeppelin `ERC1967Proxy`,
   which has **no admin/authority entry of its own** — the ERC-1967 admin slot
   is `0` and stays there (`test_proxyHasNoAdminSlot`), so there is no factory
   key, guardian or fallback route to disable. `upgradeToAndCall` gated by
-  `_authorizeUpgrade` (admin-only, `test_nonAdminUpgradeReverts`) is the only
-  way up, and OZ's `onlyProxy` kills any attempt made against the bare
-  implementation (`test_bareImplementationUpgradeReverts`).
-- **No half-deployed hub can exist**: OZ's proxy refuses construction with
-  empty init data (`ERC1967ProxyUninitialized`) and a botched
+  `_authorizeUpgrade` (admin-only) is the only way up — `test_nonAdminUpgradeReverts`,
+  `test_gatewayNonAdminUpgradeReverts` — and OZ's `onlyProxy` kills any attempt
+  made against either bare implementation (`test_bareImplementationUpgradeReverts`,
+  `test_gatewayBareImplementationUpgradeReverts`).
+- **No half-deployed hub or gateway can exist**: OZ's proxy refuses
+  construction with empty init data (`ERC1967ProxyUninitialized`) and a botched
   `initialize(admin_ = 0)` bubbles out of the constructor
-  (`test_zeroAdminProxyCannotBeConstructed`) — a failed deploy leaves nothing
-  on chain to strand users.
+  (`test_zeroAdminProxyCannotBeConstructed`,
+  `test_gatewayZeroAdminProxyCannotBeConstructed`) — a failed deploy leaves
+  nothing on chain to strand users.
 - **`initialize` runs exactly once**, via OpenZeppelin's `initializer`
   modifier. The constructor writes **no variable at all** — OZ's documented
   best practice for proxied contracts: its only job is to call
   `_disableInitializers()`, which locks the bare implementation forever so no
-  stranger can ever own it (`test_bareImplementationCannotBeInitialized`;
-  a second call on the proxy reverts `InvalidInitialization()` —
-  `test_initializeTwiceReverts`). The body still rejects `admin_ = address(0)`
-  (`test_initializeRejectsZeroAdmin`). **Storage survives upgrades**
-  (`test_journalPreservedAcrossUpgrade`).
+  stranger can ever own it (`test_bareImplementationCannotBeInitialized`,
+  `test_gatewayBareImplementationCannotBeInitialized`; a second call on the
+  proxy reverts `InvalidInitialization()` — `test_initializeTwiceReverts`,
+  `test_gatewayInitializeTwiceReverts`). The body still rejects
+  `admin_ = address(0)` (`test_initializeRejectsZeroAdmin`,
+  `test_gatewayInitializeRejectsZeroAdmin`). **Storage survives upgrades**
+  (`test_journalPreservedAcrossUpgrade`,
+  `test_gatewayConfigPreservedAcrossUpgrade`).
   No base `__X_init()` is called, and none exists to call: `UUPSUpgradeable`
   is flagged `@custom:stateless` (no storage, no init function — it does not
   even extend `Initializable`, which is why the hub inherits it explicitly),
   Solady's `EIP712` caches its domain separator in `immutable`s and invalidates
   the cache whenever `address()` differs, so the separator is rebuilt over the
   proxy address, and `Initializable`'s own state is an ERC-7201 slot. Those
-  three configuration words are the entire bootstrap.
+  three configuration words on the hub (four on the gateway) are the entire
+  bootstrap.
 - **`admin` is written exactly once** — by `initialize`, on the proxy (the
   constructor writes no configuration) — and has **no transfer function**. It cannot be rotated after deployment. That is
   a deliberate trade: no transfer means no transfer-hijack, and the price is
-  that you must **deploy with a multisig/timelock as `HUB_ADMIN` from day one**;
-  there is no later correction.
+  that you must **deploy with a multisig/timelock as `HUB_ADMIN` from day one** — and the
+  same rule for `GW_ADMIN` on L1. There is no later correction.
 - **Renounce plan**: OpenZeppelin's `UUPSUpgradeable` exposes no renounce
   function either (only `upgradeToAndCall`, `proxiableUUID`,
   `_authorizeUpgrade`, plus the read-only `UPGRADE_INTERFACE_VERSION`), so
-  renouncing means **one final upgrade to an implementation whose
-  `_authorizeUpgrade` unconditionally reverts**, then discarding the admin
-  key. It must **not** be done by zeroing `admin`: initialization is gated by
+  renouncing means **one final upgrade per proxy — there are two — to an
+  implementation whose `_authorizeUpgrade` unconditionally reverts**, then
+  discarding each admin key. It must **not** be done by zeroing `admin`: initialization is gated by
   OpenZeppelin's `Initializable` version slot (not by the admin value), so
   zeroing admin would *not* re-open `initialize` — it would instead
   permanently brick
@@ -473,13 +490,15 @@ HUB_ROUTER=<chainlink router on Base> \
 HUB_ETH_CHAIN_SELECTOR=<Chainlink selector for the Base→Ethereum lane> \
   forge script script/DeployHub.s.sol --rpc-url $BASE_RPC --broadcast
 
-# 2. Gateway (Ethereum) — plain, immutable
+# 2. Gateway (Ethereum) — OZ ERC1967 proxy (same single upgrade path as the
+#    hub); GW_ADMIN is the gateway's upgrade key — multisig/timelock
+GW_ADMIN=<multisig> \
 GW_ROUTER=<chainlink router on Ethereum> \
 GW_HUB=<hub proxy address> \
 GW_BASE_CHAIN_SELECTOR=<Chainlink selector for the Ethereum→Base lane> \
   forge script script/DeployGateway.s.sol --rpc-url $ETH_RPC --broadcast
 
-# 3. Wire them (admin only)
+# 3. Wire them (admin only) — $GATEWAY is the GATEWAY_PROXY address from the log
 cast send $HUB "setGateway(address)" $GATEWAY --private-key $ADMIN_KEY --rpc-url $BASE_RPC
 
 # Keepers (permissionless — anyone can run)
@@ -493,15 +512,19 @@ HUB_ADDRESS=$HUB forge script script/Anchor.s.sol    --rpc-url $BASE_RPC --broad
 ```
 src/
   ArticleAnchor.sol        hub: submit, journal, batching, roots, CCIP inbound, UUPS
-  SubmissionGateway.sol    L1: payable entry lane (no ecrecover), stateless sender
+  SubmissionGateway.sol    L1: payable entry lane (no ecrecover), UUPS proxy
   ArticleAnchorGetters.sol the hub's 13 read getters, implemented once (abstract)
+  SubmissionGatewayGetters.sol
+                           the gateway's 4 read getters, implemented once
+                           (abstract)
   libraries/
     ArticleLib.sol         EIP-712 typehash + `hashStruct`, the hub's ERC-7201 slot +
                            namespace pointer (`getStorage()`), and every hub
                            policy constant as `public`: MIN_BATCH, MAX_BATCH,
                            BATCH_DEADLINE, RATE_LIMIT, HIGH_S_MAX — the
                            contract holds none of them
-    GatewayLib.sol         `public SUBMIT_GAS_LIMIT`; the contract holds none
+    GatewayLib.sol         the gateway's ERC-7201 slot + pointer and its
+                           `public SUBMIT_GAS_LIMIT`; contract holds none
   interfaces/
     IArticleAnchor.sol     hub's own public ABI, laid out in style-guide order
                            (type declarations, then events, then errors, then
@@ -522,8 +545,12 @@ src/
                            implemented in ONE contract (`ArticleAnchorGetters`),
                            an `sload` in the account that owns the namespace.
                            No wrapper copies them anywhere
-    ISubmissionGateway.sol same for SubmissionGateway (4 typed errors); the
-                           contract holds no storage, only three immutables
+    ISubmissionGateway.sol same for SubmissionGateway (6 typed errors + its
+                           ERC-7201 `Storage` struct — router/hub/selector/
+                           admin, documented field by field)
+    ISubmissionGatewayGetters.sol
+                           the gateway's 4 state reads — declared once,
+                           implemented once in `SubmissionGatewayGetters`
     Client.sol, IRouterClient.sol, IAny2EVMMessageReceiver.sol
                            vendored CCIP subset @ commit 171f9f0
 script/
@@ -535,7 +562,7 @@ test/
   ArticleLib.t.sol Submit.t.sol Batch.t.sol MerkleDifferential.t.sol
   CCIP.t.sol Gateway.t.sol Upgrade.t.sol Gas.t.sol
   lib/NaiveMerkle.sol   independent reference Merkle (differential)
-  mocks/                MockRouter, ArticleAnchorV2Stub, AuthorGate
+  mocks/                MockRouter, ArticleAnchorV2Stub, SubmissionGatewayV2Stub, AuthorGate
 .gas-snapshot            forge snapshot output (regenerate with `forge snapshot`)
 soldeer.lock             dependency pins (solady v0.1.26, forge-std v1.17.0,
                          openzeppelin-contracts + -upgradeable v5.7.0)
@@ -563,10 +590,10 @@ code, and big decimals read `1_700_000_000`.
 
 Naming follows the guide: `CapWords` for contracts, structs and events,
 `mixedCase` for functions and variables, `UPPER_CASE_WITH_UNDERSCORES` for
-constants — and for immutables as well, which the guide does not spell out but
-`forge lint` pins to the same shape (`ROUTER`, `HUB`, `BASE_CHAIN_SELECTOR`,
-`HUB_TARGET`, `GATEWAY_TARGET`); state-variable getters stay `mixedCase`
-(`admin`, `router` on the hub) because they are storage, not bytecode. Then a
+constants (`TYPEHASH`, `SUBMIT_GAS_LIMIT`, `STORAGE_SLOT`); first-party `src/`
+holds no immutable at all anymore (the gateway's three became storage when it
+went UUPS), so nothing else takes the SCREAMING shape. State-variable getters
+stay `mixedCase` (`admin`, `router`, `hub` — storage, not bytecode). Then a
 leading `_` on every non-external **function** (`_submit`, `_buildRoot`,
 `_deployHub`, `_signedLeaf`). Two deliberate calls where the
 guide leaves room:
