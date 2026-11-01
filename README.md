@@ -23,7 +23,7 @@ end-to-end test all run through `forge`/`cast`. There is no JS/TS/npm anywhere
 git clone <this-repo> && cd <this-repo>
 forge soldeer install        # forge-std 1.17.0 + solady 0.1.26, from soldeer.lock
 forge build
-forge test                   # 65 tests, 8 suites
+forge test                   # 66 tests, 8 suites
 forge snapshot               # regenerates .gas-snapshot
 bash script/e2e-anvil.sh     # live end-to-end on anvil: submit → anchor
 ```
@@ -180,7 +180,7 @@ affordable where per-article onchain storage would not be.
 
 ## Attack matrix ↔ tests
 
-65 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
+66 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
 
 | # | Threat | Defense | Test(s) |
 |---|---|---|---|
@@ -501,7 +501,9 @@ GW_BASE_CHAIN_SELECTOR=<Chainlink selector for the Ethereum→Base lane> \
   forge script script/DeployGateway.s.sol --rpc-url $ETH_RPC --broadcast
 
 # 3. Wire them (owner only) — one call per source chain: $SOURCE_SELECTOR is
-#    that chain's Chainlink selector, $GATEWAY its GATEWAY_PROXY address
+#    that chain's Chainlink selector, $GATEWAY its GATEWAY_PROXY address.
+#    Revocation is the same call with address(0): inbound from that chain then
+#    fails closed to BadChain.
 cast send $HUB "setGateway(uint64,address)" $SOURCE_SELECTOR $GATEWAY --private-key $OWNER_KEY --rpc-url $BASE_RPC
 
 # Keepers (permissionless — anyone can run)

@@ -106,7 +106,7 @@ contract ArticleAnchor is
     }
 
     // ---------------------------------------------------------------------
-    // Views — verification (the 12 state getters live in `ArticleAnchorGetters`)
+    // Views — verification (the 11 state getters live in `ArticleAnchorGetters`)
     // ---------------------------------------------------------------------
 
     /// @inheritdoc IArticleAnchor

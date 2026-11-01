@@ -51,7 +51,9 @@ interface IArticleAnchor {
         /// (or revoked).
         mapping(uint64 => address) gatewayAt;
         /// @dev Slot 2 — the word holds the array length; element `i` lives at
-        /// `keccak256(abi.encode(uint256(2), baseSlot)) + i`.
+        /// `keccak256(abi.encode(uint256(baseSlot))) + i`, `baseSlot` = this
+        /// field's absolute slot (namespace base + 2) — array elements hash
+        /// the slot alone, the index is added arithmetically.
         bytes32[] journal;
         /// @dev Slot 3 — double-mapping base; entry slots derive from it.
         mapping(address => mapping(bytes32 => bool)) usedUuid;

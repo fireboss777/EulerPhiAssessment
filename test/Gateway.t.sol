@@ -25,7 +25,7 @@ contract GatewayTest is ArticleTestBase {
     }
 
     // ------------------------------------------------------------------
-    // Paid entry lane (Ethereum -> hub)
+    // Paid entry lane: this chain -> hub
     // ------------------------------------------------------------------
 
     function test_gatewayForwardsByteIdenticalCalldata() public {

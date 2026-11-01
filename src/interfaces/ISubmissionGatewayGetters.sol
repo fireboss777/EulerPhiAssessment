@@ -16,7 +16,7 @@ pragma solidity ^0.8.27;
 /// the implementations honest — each body is checked by the compiler against
 /// this file, so a signature change breaks the build.
 interface ISubmissionGatewayGetters {
-    /// @notice Chainlink Router on Ethereum: where fee quotes and `ccipSend`
+    /// @notice Chainlink Router of the gateway's chain: where fee quotes and `ccipSend`
     /// go. Storage, so an owner upgrade can retarget it — never a setter.
     function router() external view returns (address);
 

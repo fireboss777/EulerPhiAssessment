@@ -79,6 +79,19 @@ contract CCIPTest is ArticleTestBase {
         mock.deliver(address(hub), _inbound(TEST_SEL, GATEWAY, leaf, sig, p));
     }
 
+    function test_crossChainSenderRejected() public {
+        uint64 selB = 222_222;
+        address gatewayB = address(0xB0B);
+        hub.setGateway(selB, gatewayB);
+        assertEq(hub.gatewayAt(selB), gatewayB, "both chains registered");
+
+        // Sender of chain B announced under chain A: pairing is per-chain —
+        // membership in the registered set is not enough (Q1: strict pairing).
+        (bytes32 leaf, bytes memory sig, IArticleAnchor.ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 10);
+        vm.expectRevert(IArticleAnchor.BadSender.selector);
+        mock.deliver(address(hub), _inbound(TEST_SEL, gatewayB, leaf, sig, p));
+    }
+
     function test_replayAcrossLanesReverts() public {
         (bytes32 leaf, bytes memory sig, IArticleAnchor.ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 4);
 
