@@ -23,7 +23,7 @@ end-to-end test all run through `forge`/`cast`. There is no JS/TS/npm anywhere
 git clone <this-repo> && cd <this-repo>
 forge soldeer install        # forge-std 1.17.0 + solady 0.1.26, from soldeer.lock
 forge build
-forge test                   # 63 tests, 8 suites
+forge test                   # 65 tests, 8 suites
 forge snapshot               # regenerates .gas-snapshot
 bash script/e2e-anvil.sh     # live end-to-end on anvil: submit → anchor
 ```
@@ -62,7 +62,7 @@ Dependencies are **Soldeer-managed only** (no git submodules, no npm):
 
 **One contract owns every security-relevant decision** (`ArticleAnchor`): digest
 and signature verification, the journal, root construction and batch policy.
-The L1 `SubmissionGateway` deliberately does *no*
+The `SubmissionGateway` deliberately does *no*
 `ecrecover` (design decision 1a): EIP-712 domains are chain-bound, so the hub
 is the single signature authority, and one authority is easier to reason about
 than two. The gateway quotes the CCIP fee and forwards bytes unchanged.
@@ -95,16 +95,16 @@ protocol never charges; you pay the network for the transaction you send.
 | Lane | Chain | What you pay | When to use |
 |---|---|---|---|
 | **Direct** (cheap) | Base (L2) | one L2 tx — a few cents, often less | default: writers, relayers, keepers |
-| **Paid entry** (one hop) | Ethereum (L1) | L1 gas + the CCIP fee quoted by `getFee`, excess refunded | you are on L1 and want one transaction to land it on the hub |
+| **Paid entry** (one hop) | any source chain (e.g. Ethereum) | source-chain gas + the CCIP fee quoted by `getFee`, excess refunded | you're on a source chain and want one transaction to land it on the hub |
 
 Because the gateway checks only chain-agnostic state (digest + deadline) and
 **no signature** (decision 1a), a payload the hub will later reject — rate
-limited, duplicate uuid — still passes L1 and **burns the CCIP fee** on the
+limited, duplicate uuid — still passes the gateway and **burns the CCIP fee** on the
 hub-side revert. Check `lastSubmit[author] + RATE_LIMIT` and
-`usedUuid[author][uuid]` off-chain before paying for the L1 lane; the direct
+`usedUuid[author][uuid]` off-chain before paying for the paid lane; the direct
 L2 lane has no such downside (the revert only costs your own gas).
 
-`SubmissionGateway.submitArticle` is `payable` for exactly one reason: on L1 a
+`SubmissionGateway.submitArticle` is `payable` for exactly one reason: on the gateway's chain a
 transaction must also buy the cross-chain message. The fee is **Chainlink's,
 not ours** — the gateway forwards `fee` to the router, refunds any excess to
 the caller, and retains nothing (`address(gw).balance == 0` is asserted).
@@ -121,10 +121,11 @@ Trust decreases as you go down this ladder; each level inherits correctness
 from the one above and adds an assumption.
 
 **1. Hub (L2 canonical record) — strongest.**
-You trust: this code, the author's key (for their own bylines), the two
-OZ `owner` keys — the hub's owner on L2 (owns the journal) and `GW_OWNER` on L1
-(owns the paid lane only: a compromised gateway owner reroutes messages and
-fees, never the journal), each rotatable by two-step transfer — and Chainlink
+You trust: this code, the author's key (for their own bylines), the OZ
+`owner` keys — the hub's owner on L2 (owns the journal) and one `GW_OWNER` per
+source-chain gateway (each owns its paid lane only: a compromised gateway
+owner reroutes messages and fees, never the journal), each rotatable by
+two-step transfer — and Chainlink
 only for the cross-chain legs. Roots are derived
 by the contract from the journal, so a compromised *keeper* gains nothing — it
 can withhold a call (delay), never lie about content.
@@ -156,10 +157,10 @@ production-shaped numbers, not direct-call ones.
 | `submitArticle` — steady state | relayer / writer | **87,396** | 1h per-author rate limit applies |
 | `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **104,493** | ≈75k fixed window/tree overhead |
 | `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **654,503** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
-| `verifyAgainstBatch` — 10-leaf root | reader | **15,064** | an `eth_call` costs you nothing |
-| gateway `submitArticle` — our side | writer | **46,531** | + L1 gas + CCIP fee (router's execution on top) |
+| `verifyAgainstBatch` — 10-leaf root | reader | **15,042** | an `eth_call` costs you nothing |
+| gateway `submitArticle` — our side | writer | **46,531** | + source-chain gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 12,435 B runtime, `SubmissionGateway` 8,284 B
+Contract sizes: `ArticleAnchor` 12,493 B runtime, `SubmissionGateway` 8,284 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
@@ -179,7 +180,7 @@ affordable where per-article onchain storage would not be.
 
 ## Attack matrix ↔ tests
 
-63 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
+65 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
 
 | # | Threat | Defense | Test(s) |
 |---|---|---|---|
@@ -191,8 +192,8 @@ affordable where per-article onchain storage would not be.
 | 5 | Reuse it across lanes (direct **and** gateway-CCIP) | same `uuid` check sees both lanes | `CCIP.t.sol::test_replayAcrossLanesReverts` |
 | 6 | Replay on another hub instance or another chain | EIP-712 domain `(chainId, verifyingContract)` | `Submit.t.sol::test_payloadSignedForAnotherDomainReverts` |
 | 7 | Bypass the router to inject through `ccipReceive` (the entry itself checks nothing) | `msg.sender == router`, checked in the lane handler | `CCIP.t.sol::test_directConsumeRejected` |
-| 8 | Message from a foreign chain | `sourceChainSelector` pin | `CCIP.t.sol::test_wrongChainSelectorReverts` |
-| 9 | Message from a foreign sender on the right chain | `sender == gateway` pin | `CCIP.t.sol::test_wrongSenderReverts` |
+| 8 | Message from a foreign chain | `gatewayAt[sourceChainSelector]` registration pin (unregistered = `BadChain`) | `CCIP.t.sol::test_wrongChainSelectorReverts`, `test_revokedChainReverts`, `test_secondChainGatewayAccepted` (the pin accepts exactly the registered set) |
+| 9 | Message from a foreign sender on the right chain | `sender == gatewayAt[chain]` pin | `CCIP.t.sol::test_wrongSenderReverts` |
 | 10 | Push an arbitrary root into the hub | `anchorNextBatch()` takes **no root argument** — root is computed from the journal | `Batch.t.sol::test_permissionlessAnchor`, `Batch.t.sol::test_rangeFreezeAfterAppend` (root re-derived from journal, byte-identical) |
 | 11 | Alter an anchored root by appending later | range freeze on `[start, end)` | `Batch.t.sol::test_rangeFreezeAfterAppend` *(Review Focus 5)* |
 | 12 | Grief batches (early/late/empty closes) | `MIN_BATCH`/`MAX_BATCH`/`BATCH_DEADLINE`/`pending > 0` | `Batch.t.sol::test_anchorRequiresMinOrDeadline`, `Batch.t.sol::test_anchorAtMaxBatch`, `Batch.t.sol::test_emptyAnchorReverts` |
@@ -302,11 +303,9 @@ for both contracts, constant, id and contents must all agree. Payoffs: a future
 base contract or a field reordering cannot collide with this layout, because a
 namespace owns its own region of the slot space; the layout is auditable as one
 commented block instead of being implied by declaration order across the file;
-and `router`/`ethChainSelector`/`gateway` keep exactly the pairing the
-linear layout gave them (`router` + `ethChainSelector` share one word — the
-namespace base since ownership moved to OZ — which is what `ccipReceive` reads
-together: the first migration attempt split them and paid +2,100 gas per
-delivery until the storage layout caught it), while the gateway packs
+and `router` sits alone at the namespace base (bytes 0..20 — the multi-chain
+mapping took its old selector pin away), with `gatewayAt`'s
+mapping base at slot 1, while the gateway still packs
 `router` + `baseChainSelector` into its base word because `submitArticle`
 reads both. This is breaking for a proxy deployed at the old
 linear slots; no such deployment exists for either namespace (the gateway's
@@ -369,12 +368,12 @@ caught lying, because the journal settles what it may claim.
 
 ### UUPS trust note and renounce plan
 
-The two owner keys are the trust floor of the system: the hub's OZ `owner` can
-upgrade the implementation and therefore control the journal, and `GW_OWNER`
-can upgrade the gateway — enough to reroute or halt the paid lane (an upgrade
-rewrites `router`/`hub`/`baseChainSelector`), never to touch the journal,
-whose every check runs on the hub, out of the gateway's reach. Mitigations in
-place, all tested, and each applies to **both** contracts:
+The owner keys are the trust floor of the system: the hub's OZ `owner` can
+upgrade the implementation and therefore control the journal, and each
+`GW_OWNER` can upgrade its gateway — enough to reroute or halt that paid lane
+(an upgrade rewrites `router`/`hub`/`baseChainSelector`), never to touch the
+journal, whose every check runs on the hub, out of the gateways' reach.
+Mitigations in place, all tested, and each applies to **every** contract:
 
 - **Single upgrade path**: each contract sits behind its own OpenZeppelin `ERC1967Proxy`,
   which has **no admin/authority entry of its own** — the ERC-1967 admin slot
@@ -420,21 +419,22 @@ place, all tested, and each applies to **both** contracts:
   address gains nothing until it accepts, and the owner can cancel before
   that: no silent transfer-hijack. The price is that you
   must **deploy with a multisig/timelock as `HUB_OWNER` from day one** — and
-  the same rule for `GW_OWNER` on L1.
+  the same rule for every `GW_OWNER`.
 - **Renounce plan**: each proxy's owner calls **`renounceOwnership()`** — OZ's
   function, one step by OZ's design (the two-step rule protects transfers, not
   renouncing) — which sets `owner` to `address(0)` and makes every `onlyOwner`
-  path (`_authorizeUpgrade`, `setGateway`) unreachable forever. There are two
-  keys, so there are two calls, and `OwnershipTransferred(old, 0)` is the
-  on-chain record. Ownership lives in OZ's ERC-7201 slots, not in the app
+  path (`_authorizeUpgrade`, `setGateway`) unreachable forever. One call per
+  proxy — the hub, then every gateway — and `OwnershipTransferred(old, 0)` is
+  the on-chain record. Ownership lives in OZ's ERC-7201 slots, not in the app
   namespace, so renouncing changes no initialization state: `Initializable`'s
   version slot still gates `initialize`, which stays closed.
 
 ### Chain selectors are sourced, never guessed
 
-Both directions pin a Chainlink **chain selector** (`HUB_ETH_CHAIN_SELECTOR`,
-`GW_BASE_CHAIN_SELECTOR`), injected at deploy time and never hardcoded in
-source. Get them from Chainlink's official CCIP directory for the exact lane
+Both directions pin a Chainlink **chain selector**: each authorized source
+chain is a key of the hub's `gatewayAt` mapping (set via `setGateway`, one per
+lane), and `GW_BASE_CHAIN_SELECTOR` is injected at deploy time — never
+hardcoded in source. Get them from Chainlink's official CCIP directory for the exact lane
 you deploy (docs.chain.link → CCIP → directory), not from memory or a
 third-party list. A wrong selector fails **closed**: the lane simply never
 delivers. Selectors are *not* chain ids — they are Chainlink's own namespace.
@@ -490,7 +490,6 @@ IPFS node calls from Solidity; it is commitments only.
 # 1. Hub (Base) — OZ ERC1967 proxy (no admin entry at all); owner = your multisig/timelock
 HUB_OWNER=<multisig> \
 HUB_ROUTER=<chainlink router on Base> \
-HUB_ETH_CHAIN_SELECTOR=<Chainlink selector for the Base→Ethereum lane> \
   forge script script/DeployHub.s.sol --rpc-url $BASE_RPC --broadcast
 
 # 2. Gateway (Ethereum) — OZ ERC1967 proxy (same single upgrade path as the
@@ -501,8 +500,9 @@ GW_HUB=<hub proxy address> \
 GW_BASE_CHAIN_SELECTOR=<Chainlink selector for the Ethereum→Base lane> \
   forge script script/DeployGateway.s.sol --rpc-url $ETH_RPC --broadcast
 
-# 3. Wire them (owner only) — $GATEWAY is the GATEWAY_PROXY address from the log
-cast send $HUB "setGateway(address)" $GATEWAY --private-key $ADMIN_KEY --rpc-url $BASE_RPC
+# 3. Wire them (owner only) — one call per source chain: $SOURCE_SELECTOR is
+#    that chain's Chainlink selector, $GATEWAY its GATEWAY_PROXY address
+cast send $HUB "setGateway(uint64,address)" $SOURCE_SELECTOR $GATEWAY --private-key $OWNER_KEY --rpc-url $BASE_RPC
 
 # Keepers (permissionless — anyone can run)
 HUB_ADDRESS=$HUB forge script script/Anchor.s.sol    --rpc-url $BASE_RPC --broadcast
@@ -515,8 +515,8 @@ HUB_ADDRESS=$HUB forge script script/Anchor.s.sol    --rpc-url $BASE_RPC --broad
 ```
 src/
   ArticleAnchor.sol        hub: submit, journal, batching, roots, CCIP inbound, UUPS
-  SubmissionGateway.sol    L1: payable entry lane (no ecrecover), UUPS proxy
-  ArticleAnchorGetters.sol the hub's 12 read getters, implemented once (abstract)
+  SubmissionGateway.sol    source chain: payable entry lane (no ecrecover), UUPS proxy
+  ArticleAnchorGetters.sol the hub's 11 read getters, implemented once (abstract)
   SubmissionGatewayGetters.sol
                            the gateway's 3 read getters, implemented once
                            (abstract)
@@ -532,7 +532,7 @@ src/
     IArticleAnchor.sol     hub's own public ABI, laid out in style-guide order
                            (type declarations, then events, then errors, then
                            functions: actions first, `view` last) + all 11
-                           custom errors + every API NatSpec; the 12 read
+                           custom errors + every API NatSpec; the 11 read
                            getters are NOT here — they live in
                            `IArticleAnchorGetters` — and ArticleAnchor inherits
                            both, so the compiler keeps docs and ABI in
@@ -544,7 +544,7 @@ src/
                            error declared here, never a revert string: each
                            guard is written `require(condition, Err())`
     IArticleAnchorGetters.sol
-                           the hub's 12 read getters — declared in ONE place,
+                           the hub's 11 read getters — declared in ONE place,
                            implemented in ONE contract (`ArticleAnchorGetters`),
                            an `sload` in the account that owns the namespace.
                            No wrapper copies them anywhere
