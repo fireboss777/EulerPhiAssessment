@@ -75,6 +75,13 @@ contract GasTest is ArticleTestBase {
 
         IArticleAnchor.ArticleSubmission memory p = _payloadFor(vm.addr(KEY), 3);
         bytes memory sig = _signArticle(hub, p, KEY);
+        // Fresh transaction on the L1 lane: proxy account + its three config
+        // words, the implementation behind it and the router are all COLD —
+        // the same cold access list the header and README promise.
+        bytes32 implSlot = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
+        vm.cool(address(gw));
+        vm.cool(address(uint160(uint256(vm.load(address(gw), implSlot)))));
+        vm.cool(address(mock));
         uint256 g0 = gasleft();
         gw.submitArticle{ value: mock.fee() }(_leafOf(p), sig, p);
         uint256 used = g0 - gasleft();

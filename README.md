@@ -46,7 +46,7 @@ Dependencies are **Soldeer-managed only** (no git submodules, no npm):
 ```
                      Ethereum (L1)                                Base (L2)
 ┌───────────────────────────────────────────┐   ┌─────────────────────────────────────────────┐
-│  SubmissionGateway  (UUPS proxy)            │   │  ArticleAnchor  (UUPS proxy)              │
+│  SubmissionGateway  (UUPS proxy)          │   │  ArticleAnchor  (UUPS proxy)                │
 │                                           │   │                                             │
 │  submitArticle(leaf, sig, payload)        │   │  submitArticle(leaf, sig, payload)          │
 │    payable · digest check only            │   │    public · EIP-712 authorship check        │
@@ -156,7 +156,7 @@ production-shaped numbers, not direct-call ones.
 | `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **104,493** | ≈75k fixed window/tree overhead |
 | `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **654,503** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
 | `verifyAgainstBatch` — 10-leaf root | reader | **15,041** | an `eth_call` costs you nothing |
-| gateway `submitArticle` — our side | writer | **38,557** | + L1 gas + CCIP fee (router's execution on top) |
+| gateway `submitArticle` — our side | writer | **46,557** | + L1 gas + CCIP fee (router's execution on top) |
 
 Contract sizes: `ArticleAnchor` 11,389 B runtime, `SubmissionGateway` 7,224 B
 (limits: 24,576 B).

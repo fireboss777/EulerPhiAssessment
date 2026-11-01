@@ -38,8 +38,9 @@ interface ISubmissionGateway {
         /// @dev Slot 1, bytes 0..20.
         address router;
         /// @dev Slot 1, bytes 20..28 — packs with `router` (20 + 8 <= 32): this
-        /// pairing is the original contract layout, byte for byte:
-        /// `submitArticle` reads both, so they must share one cold word.
+        /// pairing is NEW with this layout (the pre-proxy gateway held no
+        /// storage at all) and exists because `submitArticle` reads both, so
+        /// they share one cold word.
         uint64 baseChainSelector;
         /// @dev Slot 2.
         address hub;
