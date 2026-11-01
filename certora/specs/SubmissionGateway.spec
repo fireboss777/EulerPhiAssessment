@@ -4,6 +4,11 @@
 // * hub's INV-1..INV-4 transcription (ArticleAnchor.spec).
 // *
 // * Harness assumptions:
+// *  - solc: resolved from PATH (the confs deliberately carry NO `solc`
+// *    field — an absolute compiler path is machine-local and breaks any
+// *    other machine/CI). The PATH `solc` shim is managed by solc-select
+// *    (pinned 0.8.28, the same commit the hardcoded hardhat path pointed
+// *    to); Foundry uses its own solc inventory, so this pin is Certora-only.
 // *  - Scene: SubmissionGateway + test/mocks/MockRouter (the router double)
 // *    + certora/harness/GatewayCodec.sol (the abi encoder CVL lacks).
 // *    Implementation-level, like the hub: production runs behind the

@@ -5,6 +5,11 @@
 // * formal transcription.
 // *
 // * Harness assumptions:
+// *  - solc: resolved from PATH (the confs deliberately carry NO `solc`
+// *    field — an absolute compiler path is machine-local and breaks any
+// *    other machine/CI). The PATH `solc` shim is managed by solc-select
+// *    (pinned 0.8.28, the same commit the hardcoded hardhat path pointed
+// *    to); Foundry uses its own solc inventory, so this pin is Certora-only.
 // *  - Target is ArticleAnchor (implementation-level). Production runs behind
 // *    the ERC1967 proxy; proxy-specific guarantees (empty admin slot,
 // *    re-initialization) are pinned by test/Upgrade.t.sol, not here.
