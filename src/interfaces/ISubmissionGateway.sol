@@ -19,7 +19,7 @@ import { IArticleAnchor } from "./IArticleAnchor.sol";
 /// the hub RECEIVES on its chain; every judgement happens at the destination.
 /// The gateway is proxied like the hub (OZ `ERC1967Proxy` + UUPS): its whole
 /// configuration lives in the ERC-7201 `Storage` struct below, so an upgrade
-/// never changes the address the hub pins. Its four reads live on
+/// never changes the address the hub pins. Its three reads live on
 /// `ISubmissionGatewayGetters` — declared once, implemented once.
 interface ISubmissionGateway {
     /// @notice The gateway's entire persistent state, in a single ERC-7201

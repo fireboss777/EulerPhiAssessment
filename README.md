@@ -163,7 +163,7 @@ Contract sizes: `ArticleAnchor` 12,435 B runtime, `SubmissionGateway` 8,284 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
-rollup's L1 data component. At 87,418 gas: 0.01 gwei ≈ 0.87 µETH, 0.1 gwei ≈
+rollup's L1 data component. At 87,396 gas: 0.01 gwei ≈ 0.87 µETH, 0.1 gwei ≈
 8.7 µETH — i.e. **fractions of a cent to a few cents per article** at an ETH
 price of $3k, before the (small, calldata-based) rollup data fee. Numbers are
 examples, not promises: prices move, and the CCIP row above is *our*
@@ -416,8 +416,9 @@ place, all tested, and each applies to **both** contracts:
   configuration) and rejects `address(0)` (`OwnableInvalidOwner`). Rotation is
   a **two-step transfer**: `transferOwnership(new)` only sets `pendingOwner`
   (no power until the new key calls `acceptOwnership()`), and
-  `transferOwnership(address(0))` cancels a pending transfer — a wrong address
-  can never gain, so there is no transfer-hijack to fear. The price is that you
+  `transferOwnership(address(0))` cancels a pending transfer — a pending
+  address gains nothing until it accepts, and the owner can cancel before
+  that: no silent transfer-hijack. The price is that you
   must **deploy with a multisig/timelock as `HUB_OWNER` from day one** — and
   the same rule for `GW_OWNER` on L1.
 - **Renounce plan**: each proxy's owner calls **`renounceOwnership()`** — OZ's
@@ -517,7 +518,7 @@ src/
   SubmissionGateway.sol    L1: payable entry lane (no ecrecover), UUPS proxy
   ArticleAnchorGetters.sol the hub's 12 read getters, implemented once (abstract)
   SubmissionGatewayGetters.sol
-                           the gateway's 4 read getters, implemented once
+                           the gateway's 3 read getters, implemented once
                            (abstract)
   libraries/
     ArticleLib.sol         EIP-712 typehash + `hashStruct`, the hub's ERC-7201 slot +
@@ -530,8 +531,8 @@ src/
   interfaces/
     IArticleAnchor.sol     hub's own public ABI, laid out in style-guide order
                            (type declarations, then events, then errors, then
-                           functions: actions first, `view` last) + all 13
-                           custom errors + every API NatSpec; the 13 read
+                           functions: actions first, `view` last) + all 11
+                           custom errors + every API NatSpec; the 12 read
                            getters are NOT here — they live in
                            `IArticleAnchorGetters` — and ArticleAnchor inherits
                            both, so the compiler keeps docs and ABI in

@@ -9,7 +9,8 @@ import { console } from "forge-std/console.sol";
 /// @notice Deploys the L1 SubmissionGateway behind OpenZeppelin's ERC1967
 /// proxy — which has NO admin entry of its own (the ERC-1967 admin slot stays
 /// empty), so the only upgrade route is `upgradeToAndCall` gated by
-/// `_authorizeUpgrade` (admin-only). The proxy runs `initialize` in its
+/// `_authorizeUpgrade` (`onlyOwner`, OZ `Ownable2Step`). The proxy runs
+/// `initialize` in its
 /// constructor via `data`.
 ///
 /// Env: GW_OWNER (the gateway's upgrade key — a multisig/timelock, the same
@@ -17,7 +18,7 @@ import { console } from "forge-std/console.sol";
 /// (ArticleAnchor proxy address on the hub chain), GW_BASE_CHAIN_SELECTOR
 /// (hub chain selector).
 ///
-/// Deploy order: DeployHub -> DeployGateway -> (admin) setGateway(proxy) on the hub.
+/// Deploy order: DeployHub -> DeployGateway -> (owner) setGateway(proxy) on the hub.
 contract DeployGateway is Script {
     function run() external returns (address proxy) {
         address owner = vm.envAddress("GW_OWNER");
