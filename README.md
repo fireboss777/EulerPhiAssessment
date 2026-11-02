@@ -24,8 +24,8 @@ git clone <this-repo> && cd <this-repo>
 forge soldeer install        # forge-std 1.17.0 + solady 0.1.26, from soldeer.lock
 forge build
 forge test                   # 79 tests, 9 suites
+forge test --match-contract IntegrationTest   # end-to-end: scripts → lane → cross-chain → keeper
 forge snapshot               # regenerates .gas-snapshot
-bash script/e2e-anvil.sh     # live end-to-end on anvil: submit → anchor
 ```
 
 Dependencies are **Soldeer-managed only** (no git submodules, no npm):
@@ -231,13 +231,18 @@ every submission** — the two `submitArticle` rows above are post-refactor.
 forged authorship → #1; cross-lane replay → #5; non-whitelisted CCIP source →
 #7/#8/#9; post-anchor append → #11.
 
-### End-to-end (live node, not mocks)
+### End-to-end (one lifecycle, the real artifacts)
 
-`script/e2e-anvil.sh` boots anvil, deploys `MockRouter` → `ArticleAnchor`
-(UUPS), signs and submits a real EIP-712 article, warps past the batch
-deadline, anchors and asserts the frozen root. It is the acceptance check for
-the keeper script (`Anchor.s.sol`) — permissionless and assuming nothing the
-contract does not enforce.
+`test/Integration.t.sol` walks the whole documented lifecycle in one test:
+the **deploy scripts' `run()`** (param plumbing + proxy wiring), owner
+`setGateway` wiring, a **paid gateway submission** (fee quoted by the router,
+excess refunded), the **CCIP delivery** on the hub's side (captured bytes
+handed over by the hub's own router — the two chains are the two contract
+sets plus the mock transport, the standard Foundry shape), then a `vm.warp`
+past the batch deadline and the **keeper script** closing the window — ending
+with the published proof verifying against the frozen root. It replaced the
+former `script/e2e-anvil.sh`: bash orchestration with hardcoded keys, no CI,
+and it never crossed chains anyway.
 
 ---
 
@@ -263,10 +268,11 @@ all-in on Solidity is a deliberate constraint with three payoffs:
    cross-check roots — but it would run *outside* the EVM, catching encoding
    mistakes rather than semantic ones, and would drag an npm tree into a repo
    whose whole point is that it has none.
-3. **End-to-end without a frontend.** `forge script` signs with the same
-   EIP-712 math the tests use (`E2ESubmit.s.sol` reads the hub's EIP-5267
-   domain and derives the digest in Solidity), and `cast` does the
-   assertions. The e2e is a test, not a demo.
+3. **End-to-end without a frontend.** The integration test drives the same
+   artifacts a deployment would — the deploy and keeper scripts' `run()` —
+   and signs with `vm.sign` against the domain the **contract itself**
+   reports over EIP-5267 (never a copied constant). The e2e is a test, not a
+   demo.
 
 **What this costs, honestly:** no UI (a wallet must craft the typed data or
 call the contract), no indexer, no IPFS pinning automation. Those are product
@@ -507,18 +513,22 @@ IPFS node calls from Solidity; it is commitments only.
 ## Deployment
 
 ```bash
-# 1. Hub (Base) — OZ ERC1967 proxy (no admin entry at all); owner = your multisig/timelock
-HUB_OWNER=<multisig> \
-HUB_ROUTER=<chainlink router on Base> \
-  forge script script/DeployHub.s.sol --rpc-url $BASE_RPC --broadcast
+# 1. Hub (Base) — OZ ERC1967 proxy (no admin entry at all); owner = your multisig/timelock.
+#    Scripts take TYPED PARAMS (--sig), not env vars.
+forge script script/DeployHub.s.sol \
+  --sig "run(address,address)" \
+  <multisig> <chainlink router on Base> \
+  --rpc-url $BASE_RPC --broadcast
 
 # 2. Gateway (Ethereum) — OZ ERC1967 proxy (same single upgrade path as the
-#    hub); GW_OWNER is the gateway's upgrade key — multisig/timelock
-GW_OWNER=<multisig> \
-GW_ROUTER=<chainlink router on Ethereum> \
-GW_HUB=<hub proxy address> \
-GW_BASE_CHAIN_SELECTOR=<Chainlink selector for the Ethereum→Base lane> \
-  forge script script/DeployGateway.s.sol --rpc-url $ETH_RPC --broadcast
+#    hub); first arg is the gateway's upgrade key — multisig/timelock.
+#    The selector is a uint64 PARAM: the CLI parser rejects an out-of-range
+#    value outright, so a mistyped selector can never be truncated into a
+#    wrong-but-plausible lane.
+forge script script/DeployGateway.s.sol \
+  --sig "run(address,address,address,uint64)" \
+  <multisig> <chainlink router on Ethereum> <hub proxy address> <Chainlink selector for the Ethereum→Base lane> \
+  --rpc-url $ETH_RPC --broadcast
 
 # 3. Wire them (owner only) — one call per source chain: $SOURCE_SELECTOR is
 #    that chain's Chainlink selector, $GATEWAY its GATEWAY_PROXY address.
@@ -527,7 +537,7 @@ GW_BASE_CHAIN_SELECTOR=<Chainlink selector for the Ethereum→Base lane> \
 cast send $HUB "setGateway(uint64,address)" $SOURCE_SELECTOR $GATEWAY --private-key $OWNER_KEY --rpc-url $BASE_RPC
 
 # Keepers (permissionless — anyone can run)
-HUB_ADDRESS=$HUB forge script script/Anchor.s.sol    --rpc-url $BASE_RPC --broadcast
+forge script script/Anchor.s.sol --sig "run(address)" $HUB --rpc-url $BASE_RPC --broadcast
 ```
 
 ---
@@ -581,13 +591,13 @@ src/
 script/
   DeployHub.s.sol DeployGateway.s.sol     deployment (single upgrade path)
   Anchor.s.sol                            permissionless keeper loop
-  E2ESubmit.s.sol                         signs + submits against the live domain
-  e2e-anvil.sh                            live end-to-end driver
 test/
+  Integration.t.sol                       end-to-end lifecycle via the real scripts
   ArticleLib.t.sol Submit.t.sol Batch.t.sol MerkleDifferential.t.sol
   CCIP.t.sol Gateway.t.sol Upgrade.t.sol Gas.t.sol
+  utils/ArticleTestBase.sol               fixtures: live-domain signing, seeding
   lib/NaiveMerkle.sol   independent reference Merkle (differential)
-  mocks/                MockRouter, ArticleAnchorV2Stub, SubmissionGatewayV2Stub, AuthorGate
+  mocks/                MockRouter, ArticleAnchorV2Stub, SubmissionGatewayV2Stub, AuthorGate, RejectingSubmitter
 .gas-snapshot            forge snapshot output (regenerate with `forge snapshot`)
 soldeer.lock             dependency pins (solady v0.1.26, forge-std v1.17.0,
                          openzeppelin-contracts + -upgradeable v5.7.0)

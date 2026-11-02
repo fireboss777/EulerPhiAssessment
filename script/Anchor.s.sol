@@ -9,11 +9,10 @@ import { console } from "forge-std/console.sol";
 /// @notice Keeper: closes the hub's open batch when eligible. Permissionless
 /// by design — this script assumes nothing the contract doesn't enforce; if
 /// the batch isn't ready it simply no-ops (the contract would revert anyway).
-///
-/// Env: HUB_ADDRESS
 contract Anchor is Script {
-    function run() external {
-        ArticleAnchor hub = ArticleAnchor(vm.envAddress("HUB_ADDRESS"));
+    /// @param hub_ ArticleAnchor proxy address to poll and (when eligible) close.
+    function run(address hub_) external {
+        ArticleAnchor hub = ArticleAnchor(hub_);
 
         uint256 pending = hub.pendingLeaves();
         uint256 opened = hub.batchOpenedAt();
