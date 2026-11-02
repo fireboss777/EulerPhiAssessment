@@ -23,7 +23,7 @@ end-to-end test all run through `forge`/`cast`. There is no JS/TS/npm anywhere
 git clone <this-repo> && cd <this-repo>
 forge soldeer install        # forge-std 1.17.0 + solady 0.1.26, from soldeer.lock
 forge build
-forge test                   # 66 tests, 8 suites
+forge test                   # 77 tests, 8 suites
 forge snapshot               # regenerates .gas-snapshot
 bash script/e2e-anvil.sh     # live end-to-end on anvil: submit → anchor
 ```
@@ -164,18 +164,18 @@ production-shaped numbers, not direct-call ones.
 
 | Operation | Who pays | Gas (marginal) | Notes |
 |---|---|---:|---|
-| `submitArticle` — first leaf (cold slots) | relayer / writer | **129,415** | opens the batch window |
-| `submitArticle` — steady state | relayer / writer | **87,396** | 1h per-author rate limit applies |
-| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **104,493** | ≈75k fixed window/tree overhead |
-| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **654,503** | ≈**2.9k gas per leaf** (2.1k of it the cold journal read) |
+| `submitArticle` — first leaf (cold slots) | relayer / writer | **126,772** | opens the batch window |
+| `submitArticle` — steady state | relayer / writer | **86,701** | 1h per-author rate limit applies |
+| `anchorNextBatch` — 10 leaves (`MIN_BATCH`) | keeper | **61,900** | ≈35k fixed window/tree overhead |
+| `anchorNextBatch` — 200 leaves (`MAX_BATCH`) | keeper | **577,900** | ≈**2.7k gas per leaf** (2.1k of it the cold journal read) |
 | `verifyAgainstBatch` — 10-leaf root | reader | **15,042** | an `eth_call` costs you nothing |
-| gateway `submitArticle` — our side | writer | **46,531** | + source-chain gas + CCIP fee (router's execution on top) |
+| gateway `submitArticle` — our side | writer | **44,358** | + source-chain gas + CCIP fee (router's execution on top) |
 
-Contract sizes: `ArticleAnchor` 12,493 B runtime, `SubmissionGateway` 8,284 B
+Contract sizes: `ArticleAnchor` 13,248 B runtime, `SubmissionGateway` 8,309 B
 (limits: 24,576 B).
 
 **Turning gas into money.** L2 execution cost ≈ gas × gas price, plus the
-rollup's L1 data component. At 87,396 gas: 0.01 gwei ≈ 0.87 µETH, 0.1 gwei ≈
+rollup's L1 data component. At 86,701 gas: 0.01 gwei ≈ 0.87 µETH, 0.1 gwei ≈
 8.7 µETH — i.e. **fractions of a cent to a few cents per article** at an ETH
 price of $3k, before the (small, calldata-based) rollup data fee. Numbers are
 examples, not promises: prices move, and the CCIP row above is *our*
@@ -183,7 +183,7 @@ side only — the router's execution and Chainlink's message fee are extra and
 must be calibrated on a real testnet.
 
 The two rows worth internalizing: **verification is ~15k gas** (free for
-readers — it is a view call) and **anchoring scales gently** (~2.9k/leaf, of
+readers — it is a view call) and **anchoring scales gently** (~2.7k/leaf, of
 which ~2.1k is one cold journal read), which is what makes a Merkle journal
 affordable where per-article onchain storage would not be.
 
@@ -191,30 +191,31 @@ affordable where per-article onchain storage would not be.
 
 ## Attack matrix ↔ tests
 
-66 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs.
+77 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs,
+enforced by `forge snapshot --check` in CI.
 
 | # | Threat | Defense | Test(s) |
 |---|---|---|---|
 | 1 | Publish under someone else's name | digest re-derived from payload, then EIP-712 recovery must equal `payload.author` | `Submit.t.sol::test_forgedByAuthorSigReverts`, `ArticleLib.t.sol::test_forgedByAuthorSigReverts` |
 | 2 | Tamper payload after signing | `keccak256(abi.encode(payload)) == leaf` | `Submit.t.sol::test_digestMismatchReverts`, `Gateway.t.sol::test_gatewayDigestMismatchReverts` |
-| 3 | Signature malleability (high-`s` twin of a valid sig) | explicit low-`s` gate — Solady's `recover` deliberately does **not** check | `Submit.t.sol::test_lowSEnforced` |
+| 3 | Signature malleability (high-`s` twin) or a second format (64-byte EIP-2098 compact — Solady's `recover` has a `case 64` for it) | explicit 65-byte length gate + low-`s` gate, both ours — Solady deliberately checks neither | `Submit.t.sol::test_lowSEnforced`, `test_signatureLengthGateRejectsNon65` |
 | 4 | Reuse one signed payload | `usedUuid` keyed by `(author, uuid)` | `Submit.t.sol::test_duplicateUuidReverts` |
 | 4b | **Squat a victim's predictable uuid** with your own payload to block their article | dedup is author-scoped, so a foreign author's uuid never collides | `Submit.t.sol::test_uuidSquatDoesNotBlockVictim`, `test_sameAuthorSameUuidStillDeduped` |
 | 5 | Reuse it across lanes (direct **and** gateway-CCIP) | same `uuid` check sees both lanes | `CCIP.t.sol::test_replayAcrossLanesReverts` |
-| 6 | Replay on another hub instance or another chain | EIP-712 domain `(chainId, verifyingContract)` | `Submit.t.sol::test_payloadSignedForAnotherDomainReverts` |
+| 6 | Replay on another hub instance or another chain | EIP-712 domain `(chainId, verifyingContract)`, name/version pinned so a rename cannot desync signers | `Submit.t.sol::test_payloadSignedForAnotherDomainReverts`, `test_eip712DomainNameAndVersionPinned` |
 | 7 | Bypass the router to inject through `ccipReceive` (the entry itself checks nothing) | `msg.sender == router`, checked in the lane handler | `CCIP.t.sol::test_directConsumeRejected` |
 | 8 | Message from a foreign chain | `gatewayAt[sourceChainSelector]` registration pin (unregistered = `BadChain`) | `CCIP.t.sol::test_wrongChainSelectorReverts`, `test_revokedChainReverts`, `test_secondChainGatewayAccepted` (the pin accepts exactly the registered set) |
 | 9 | Message from a foreign sender on the right chain | `sender == gatewayAt[chain]` pin | `CCIP.t.sol::test_wrongSenderReverts` |
 | 10 | Push an arbitrary root into the hub | `anchorNextBatch()` takes **no root argument** — root is computed from the journal | `Batch.t.sol::test_permissionlessAnchor`, `Batch.t.sol::test_rangeFreezeAfterAppend` (root re-derived from journal, byte-identical) |
 | 11 | Alter an anchored root by appending later | range freeze on `[start, end)` | `Batch.t.sol::test_rangeFreezeAfterAppend` *(Review Focus 5)* |
-| 12 | Grief batches (early/late/empty closes) | `MIN_BATCH`/`MAX_BATCH`/`BATCH_DEADLINE`/`pending > 0` | `Batch.t.sol::test_anchorRequiresMinOrDeadline`, `Batch.t.sol::test_anchorAtMaxBatch`, `Batch.t.sol::test_emptyAnchorReverts` |
-| 13 | Prove a leaf that isn't in the batch (or is from another batch) | `MerkleProofLib` against the frozen root | `Batch.t.sol::test_verifyAgainstBatchFalse`, `Batch.t.sol::test_verifyAgainstBatchTrue` |
+| 12 | Grief batches (early/late/empty closes) | `MIN_BATCH`/`MAX_BATCH`/`BATCH_DEADLINE` measured from the window's open time, `pending > 0` | `Batch.t.sol::test_anchorRequiresMinOrDeadline`, `test_anchorAtMaxBatch`, `test_emptyAnchorReverts`, `test_batchWindowRecordsOpensAndGates` |
+| 13 | Prove a leaf that isn't in the batch (or is from another batch) | `MerkleProofLib` against the frozen root, checked against two real roots in both directions | `Batch.t.sol::test_verifyAgainstBatchFalse`, `test_verifyAgainstBatchTrue`, `test_crossBatchProofsBoundToTheirOwnRoot` |
 | 14 | Merkle builder/verifier disagree (implementation bug) | differential vs hand-written `NaiveMerkle` + fuzz | `MerkleDifferential.t.sol::test_matchesNaiveReference` (256 runs), `test_oddLeafCounts`, `test_singleLeafRoot` |
 | 15 | Upgrade by anyone, or a second upgrade authority hiding beside the UUPS path | `_authorizeUpgrade` is `onlyOwner` on both contracts (OZ Ownable — a `pendingOwner` has no power until `acceptOwnership`); each contract's OZ `ERC1967Proxy` has **no admin entry at all** (ERC-1967 admin slot stays `0`); OZ `onlyProxy` blocks any attempt on either bare implementation | `Upgrade.t.sol::test_nonOwnerUpgradeReverts`, `test_gatewayNonOwnerUpgradeReverts`, `test_proxyHasNoAdminSlot`, `test_bareImplementationUpgradeReverts`, `test_gatewayBareImplementationUpgradeReverts`, `test_transferOwnershipStartsTwoStep`, `test_acceptOwnershipCompletesTransfer`, `test_acceptOwnershipRejectsNonPending`, `test_transferOwnershipOnlyOwner`, `test_transferToZeroCancelsPending`, `test_gatewayTransferOwnershipTwoStep`, `test_renounceOwnershipDisablesUpgrades` |
-| 16 | Re-initialize (proxy *or* bare implementation), hijack gateway wiring, corrupt storage on upgrade | OZ `initializer` lock (bare impl `_disableInitializers()`-locked at construction) + zero-owner rejection (`OwnableInvalidOwner`), `setGateway` owner-only, ERC-7201 namespaced layout, append-only journal | `Upgrade.t.sol::test_initializeTwiceReverts`, `test_gatewayInitializeTwiceReverts`, `test_bareImplementationCannotBeInitialized`, `test_gatewayBareImplementationCannotBeInitialized`, `test_initializeRejectsZeroOwner`, `test_gatewayInitializeRejectsZeroOwner`, `test_zeroOwnerProxyCannotBeConstructed`, `test_gatewayZeroOwnerProxyCannotBeConstructed`, `test_setGatewayOnlyOwner`, `test_journalPreservedAcrossUpgrade`, `test_gatewayConfigPreservedAcrossUpgrade` |
+| 16 | Re-initialize (proxy *or* bare implementation), hijack gateway wiring, corrupt storage on upgrade | OZ `initializer` lock (bare impl `_disableInitializers()`-locked at construction) + zero-owner rejection (`OwnableInvalidOwner`), `setGateway`/`setRouter` owner-only, ERC-7201 namespaced layout, append-only journal | `Upgrade.t.sol::test_initializeTwiceReverts`, `test_gatewayInitializeTwiceReverts`, `test_bareImplementationCannotBeInitialized`, `test_gatewayBareImplementationCannotBeInitialized`, `test_initializeRejectsZeroOwner`, `test_gatewayInitializeRejectsZeroOwner`, `test_zeroOwnerProxyCannotBeConstructed`, `test_gatewayZeroOwnerProxyCannotBeConstructed`, `test_setGatewayOnlyOwner`, `test_setRouterOnlyOwner`, `test_journalPreservedAcrossUpgrade`, `test_gatewayConfigPreservedAcrossUpgrade` |
 | 17 | Spam one author's journal | `RATE_LIMIT = 1h` | `Submit.t.sol::test_rateLimit1hReverts` |
-| 18 | Submit an expired article | `block.timestamp ≤ deadline`, checked first on both lanes | `Submit.t.sol::test_expiredDeadlineReverts` |
-| 19 | Run off with / overcharge the gateway fee | `getFee` quote, `msg.value ≥ fee`, refund excess, gateway retains 0 | `Gateway.t.sol::test_insufficientFeeReverts`, `test_excessRefunded` |
+| 18 | Submit an expired article | `block.timestamp ≤ deadline`, checked first on both lanes | `Submit.t.sol::test_expiredDeadlineReverts`, `Gateway.t.sol::test_gatewayExpiredDeadlineReverts` |
+| 19 | Run off with / overcharge the gateway fee | `getFee` quote, `msg.value ≥ fee`, refund excess or revert, gateway retains 0 | `Gateway.t.sol::test_insufficientFeeReverts`, `test_excessRefunded`, `test_refundToRejectingCallerReverts` |
 | 20 | Bytes garbled between gateway and hub | byte-identical encode/decode round trip | `Gateway.t.sol::test_gatewayForwardsByteIdenticalCalldata`, `test_gatewayPayloadLandsInHub` |
 | 21 | Silent cost regression | smoke bounds on every marginal measurement | `Gas.t.sol::test_gasSubmit` / `test_gasAnchor` / `test_gasVerify` / `test_gasGatewaySubmit` |
 
@@ -290,7 +291,7 @@ and why `NaiveMerkle` stays assembly-free and separately written.
 the cheapest possible "is this article known" (one SSTORE, O(1)), but it buys
 nothing anyone else can use: no inclusion proof for readers, no composable
 batch root, no provable artifact for a third party. The Merkle route costs a fixed
-≈98k per batch plus ≈2.9k per leaf — call it **~3k gas per article to make
+≈35k per batch plus ≈2.7k per leaf — call it **~3k gas per article to make
 every article provable to a third party** (the batch's fixed overhead is paid
 once, amortized over up to 200 articles) — and returns proofs that survive
 mirrors, cross-chain copies and independent re-hosting. For a *publishing*
@@ -434,7 +435,7 @@ Mitigations in place, all tested, and each applies to **every** contract:
 - **Renounce plan**: each proxy's owner calls **`renounceOwnership()`** — OZ's
   function, one step by OZ's design (the two-step rule protects transfers, not
   renouncing) — which sets `owner` to `address(0)` and makes every `onlyOwner`
-  path (`_authorizeUpgrade`, `setGateway`) unreachable forever. One call per
+  path (`_authorizeUpgrade`, `setGateway`, `setRouter`) unreachable forever. One call per
   proxy — the hub, then every gateway — and `OwnershipTransferred(old, 0)` is
   the on-chain record. Ownership lives in OZ's ERC-7201 slots, not in the app
   namespace, so renouncing changes no initialization state: `Initializable`'s
@@ -462,7 +463,7 @@ EIP-712 typed digest — both are checked, so a payload cannot be reinterpreted.
 `anchorNextBatch` is permissionless but **incentive-free**, and the protocol
 has no treasury to pay from (that is what "no fees" means). Consequence: if
 nobody runs the keeper, writes are unaffected — articles keep journaling — but
-batches do not freeze. The script is one command and costs ≈104k gas; any
+batches do not freeze. The script is one command and costs ≈62k gas; any
 author, reader or competitor can run it, which is the point
 of permissionlessness. What it does not buy is *guaranteed* cadence. A future
 bounty or an operator cron is the honest fix; the current design optimizes for
