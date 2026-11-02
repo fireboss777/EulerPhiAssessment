@@ -61,6 +61,24 @@ contract UpgradeTest is ArticleTestBase {
         assertEq(hub.gatewayAt(8453), address(0x9999), "owner setter works");
     }
 
+    /// @dev The router is INV-2's first gate (`msg.sender == router`), so its
+    /// writer must be owner-gated exactly like `gatewayAt` — otherwise any
+    /// account could repoint the inbound lane at its own contract and journal
+    /// from "the configured router" while the getters report honest config.
+    /// Rotation without a UUPS upgrade was the reviewer's operational gap.
+    function test_setRouterOnlyOwner() public {
+        (ArticleAnchor hub,) = _proxyHub(address(this), address(0));
+
+        vm.prank(address(0xBAD));
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(0xBAD)));
+        hub.setRouter(address(0xACE));
+
+        vm.expectEmit(true, true, false, true);
+        emit IArticleAnchor.RouterChanged(address(0), address(0xACE));
+        hub.setRouter(address(0xACE));
+        assertEq(hub.router(), address(0xACE), "owner setter works");
+    }
+
     function test_initializeTwiceReverts() public {
         (ArticleAnchor hub,) = _proxyHub(address(this), address(0));
 

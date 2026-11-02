@@ -153,6 +153,46 @@ rule setGatewayOnlyOwner(env e, uint64 c, address g)
     assert rejected, "INV-2 · Owner-only writes: setGateway reverts for a non-owner";
 }
 
+/// INV-2 · Owner-only writes (router): rotating the inbound lane's first gate
+/// is owner work. `setRouter` is the hub's ONLY post-initialize writer for
+/// `router` — it was added because the per-chain registry already had a setter
+/// while rotating a deprecated Chainlink router needed a full UUPS upgrade
+/// (the operational gap the adversarial review flagged).
+rule setRouterOnlyOwner(env e, address r)
+{
+    require hub.owner() != 0;
+    require e.msg.sender != hub.owner();
+
+    hub.setRouter@withrevert(e, r);
+    bool rejected = lastReverted;
+
+    assert rejected, "INV-2 · Owner-only writes: setRouter reverts for a non-owner";
+}
+
+/// INV-2 · Owner-only writes (the parametric half): NO entry point other than
+/// `initialize` (the legitimate writer at construction) and `setRouter`
+/// (owner-gated above) may change the router. Without this companion, the
+/// predicate would claim "only the owner writes the router" while pinning one
+/// setter — a hypothetical second writer inside any other method would pass
+/// silently. Mirrors the gateway's `configurationWrittenOnlyByInitialize`;
+/// `upgradeToAndCall` is filtered like every other parametric rule here (its
+/// delegatecall has no proxy in this implementation-level scene).
+rule routerWrittenOnlyByInitializeOrSetRouter(env e, method f, calldataarg args)
+    filtered {
+        f -> f.selector != sig:initialize(address,address).selector
+          && f.selector != sig:setRouter(address).selector
+          && f.selector != sig:upgradeToAndCall(address,bytes).selector
+    }
+{
+    require hub.owner() != 0; // initialized hub (an uninitialized impl is out of scope)
+    address r = hub.router();
+
+    hub.f(e, args);
+
+    assert hub.router() == r,
+        "INV-2 · Owner-only writes: router changes only through initialize or setRouter";
+}
+
 /// INV-2 · initialize never touches gatewayAt (mapping is owner-written only,
 /// post-construction).
 rule initializeNeverTouchesGatewayAt(env e, address o, address r, uint64 c)

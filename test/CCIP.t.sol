@@ -129,6 +129,26 @@ contract CCIPTest is ArticleTestBase {
         hub.ccipReceive(m);
     }
 
+    /// @dev The router is INV-2's first gate, so rotation must actually REWIRE
+    /// the lane: the retired router loses it immediately (NotRouter, even with
+    /// a perfectly valid chain/sender tuple) and the replacement delivers.
+    function test_routerRotationRewiresTheLane() public {
+        MockRouter replacement = new MockRouter();
+        hub.setRouter(address(replacement));
+        assertEq(hub.router(), address(replacement), "router rotated");
+
+        (bytes32 leafOld, bytes memory sigOld, IArticleAnchor.ArticleSubmission memory pOld) =
+            _signedLeaf(AUTHOR_KEY, 11);
+        vm.expectRevert(IArticleAnchor.NotRouter.selector);
+        mock.deliver(address(hub), _inbound(TEST_SEL, GATEWAY, leafOld, sigOld, pOld)); // retired router
+
+        (bytes32 leaf, bytes memory sig, IArticleAnchor.ArticleSubmission memory p) = _signedLeaf(AUTHOR_KEY, 12);
+        replacement.deliver(address(hub), _inbound(TEST_SEL, GATEWAY, leaf, sig, p));
+
+        assertEq(hub.journalLength(), 1, "replacement router delivers");
+        assertEq(hub.journal(0), leaf, "leaf value");
+    }
+
     function _signedLeaf(uint256 key, uint256 salt)
         internal
         returns (bytes32 leaf, bytes memory sig, IArticleAnchor.ArticleSubmission memory p)

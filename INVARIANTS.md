@@ -58,13 +58,15 @@ revoked to `0`) can never journal anything, from any sender.
   `message.sender == gatewayAt[message.sourceChainSelector]` exactly:
   membership in the registered set is not enough (a chain-B sender under
   chain A's entry reverts `BadSender()`).
-- *Owner-only writes* — every transition modifying `gatewayAt` has
-  `msg.sender == owner` (`setGateway`, `onlyOwner`; `initialize` never touches
-  the mapping).
+- *Owner-only writes* — every transition modifying `gatewayAt` **or `router`**
+  has `msg.sender == owner` (`setGateway`, `setRouter`, both `onlyOwner`;
+  `initialize` writes the router once at construction and never the mapping).
+  The router is the lane's first gate — whoever can repoint it owns the lane
+  outright — so it gets the same owner discipline as the registry.
 
 **Threat surface.** `_consumeSubmittedArticle` (router check, mapping lookup,
 sender check — these three checks are the lane's entire security);
-`setGateway`.
+`setGateway`, `setRouter`.
 
 **Why primitive.** This is the whole trust boundary of the multi-chain
 design: the mapping *is* the whitelist, and a registered gateway's address
@@ -74,7 +76,8 @@ address in the world can write the journal.
 Pinned by `test_whitelistedSourceSubmits`, `test_wrongChainSelectorReverts`,
 `test_wrongSenderReverts`, `test_revokedChainReverts`,
 `test_secondChainGatewayAccepted`, `test_crossChainSenderRejected`,
-`test_setGatewayOnlyOwner`.
+`test_setGatewayOnlyOwner`, `test_setRouterOnlyOwner`,
+`test_routerRotationRewiresTheLane`.
 
 ---
 

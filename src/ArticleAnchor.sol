@@ -60,6 +60,14 @@ contract ArticleAnchor is
         emit GatewaySet(chainSelector, gateway_);
     }
 
+    /// @inheritdoc IArticleAnchor
+    function setRouter(address newRouter) external onlyOwner {
+        Storage storage $ = ArticleLib.getStorage();
+        address previous = $.router;
+        $.router = newRouter;
+        emit RouterChanged(previous, newRouter);
+    }
+
     // ---------------------------------------------------------------------
     // Submission
     // ---------------------------------------------------------------------
@@ -166,8 +174,9 @@ contract ArticleAnchor is
         $.usedUuid[payload.author][payload.uuid] = true;
         $.lastSubmit[payload.author] = block.timestamp;
         // First leaf of a fresh batch window opens (and re-opens) the deadline.
-        // forge-lint: disable-next-line(unsafe-typecast) — block.timestamp cannot
-        // exceed uint64 before the year 584 billion (the field doc records this).
+        // casting to 'uint64' is safe because block.timestamp cannot exceed
+        // 2^64 before the year 584 billion (the field doc records the bound)
+        // forge-lint: disable-next-line(unsafe-typecast)
         if ($.journal.length == $.lastAnchoredIndex) $.batchOpenedAt = uint64(block.timestamp);
         $.journal.push(leafDigest);
 

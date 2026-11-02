@@ -16,7 +16,8 @@ pragma solidity ^0.8.27;
 /// this file, so a signature change breaks the build.
 interface IArticleAnchorGetters {
     /// @notice Chainlink Router of the CCIP lane; also the gate that
-    /// must be `msg.sender` for any inbound delivery.
+    /// must be `msg.sender` for any inbound delivery. Written by `initialize`
+    /// and by the owner's `setRouter` (rotation without an upgrade).
     function router() external view returns (address);
 
     /// @notice The gateway registered for source chain `chainSelector` — the only

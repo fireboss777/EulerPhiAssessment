@@ -116,6 +116,11 @@ interface IArticleAnchor {
     /// @param gateway The only sender accepted from that chain; 0 revokes the chain.
     event GatewaySet(uint64 indexed chainSelector, address gateway);
 
+    /// @notice The owner rotated the inbound router — INV-2's first gate.
+    /// `newRouter = address(0)` closes the lane fail-closed: no `msg.sender`
+    /// can ever be the zero address, so every delivery then reverts `NotRouter()`.
+    event RouterChanged(address indexed previousRouter, address indexed newRouter);
+
     // ---------------------------------------------------------------------
     // Errors (thrown by the implementation; declared here so the ABI and the
     // docs of every failure mode live with the API they belong to. Access
@@ -169,6 +174,14 @@ interface IArticleAnchor {
     /// revokes the chain — inbound messages from it then revert `BadChain()`.
     /// @dev owner-only. Emits `GatewaySet`.
     function setGateway(uint64 chainSelector, address gateway_) external;
+
+    /// @notice Rotates the inbound CCIP router without a UUPS upgrade: the
+    /// per-chain registry has a setter, and the router — the other half of the
+    /// lane's identity — needs one too, or rotating a deprecated Chainlink
+    /// router means deploying a new implementation.
+    /// @dev owner-only. Emits `RouterChanged`. `newRouter = address(0)` fails
+    /// the lane closed (`NotRouter()` on every delivery) rather than open it.
+    function setRouter(address newRouter) external;
 
     // ---------------------------------------------------------------------
     // Submission
