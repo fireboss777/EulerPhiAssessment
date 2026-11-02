@@ -679,4 +679,4 @@ be inconsistent"*.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
