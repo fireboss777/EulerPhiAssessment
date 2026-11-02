@@ -25,7 +25,7 @@ import { Client } from "./Client.sol";
 /// `proxiableUUID()`, `UPGRADE_INTERFACE_VERSION()` (OpenZeppelin
 /// `UUPSUpgradeable`); and the `Upgraded` event — emitted by OZ's inlined
 /// `ERC1967Utils`, so it IS part of this contract's ABI without being
-/// declared by us. Everything else — 6 functions and 3 events — is declared
+/// declared by us. Everything else — 7 functions and 4 events — is declared
 /// below. The 11 read getters are deliberately NOT here: they live in
 /// `IArticleAnchorGetters`, brought in by `ArticleAnchorGetters`, which this
 /// contract also inherits — the union of the two IS its complete ABI.
@@ -69,6 +69,14 @@ interface IArticleAnchor {
         /// (uint64). Readers widen back to `uint256`, so the getters' ABI is
         /// unchanged. Pinned by `test_batchScalarsPackIntoOneSlot`, which
         /// reads the raw word — a widening getter cannot see the layout.
+        /// @dev BREAKING vs any proxy initialized BEFORE the packing commit
+        /// (`9ee4d50`): `lastAnchoredIndex`/`anchoredBatches` moved from their
+        /// own full words into this one and `rootAt` shifted 7 -> 6, so an
+        /// upgrade across that boundary reads zeros for the cursor and roots
+        /// (old proofs orphaned). No such deployment exists — never deployed,
+        /// no tags — and there is deliberately no dual-layout migration;
+        /// `README`'s "storage survives upgrades" claim is scoped to a single
+        /// layout version.
         uint64 batchOpenedAt;
         uint128 lastAnchoredIndex;
         uint64 anchoredBatches;

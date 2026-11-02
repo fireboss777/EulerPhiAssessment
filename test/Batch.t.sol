@@ -158,4 +158,23 @@ contract BatchTest is ArticleTestBase {
         assertFalse(hub.verifyAgainstBatch(0, leaf1, MerkleTreeLib.leafProof(tree1, 5)), "batch1 proof vs batch0 root");
         assertFalse(hub.verifyAgainstBatch(1, leaf0, MerkleTreeLib.leafProof(tree0, 2)), "batch0 proof vs batch1 root");
     }
+
+    /// @dev `pendingLeaves` is the reader of the packed cursor (`journal.length
+    /// − lastAnchoredIndex`, widened uint256 arithmetic) and the number the
+    /// keeper script actually polls before paying for a transaction — it had
+    /// zero tests, so a wrong subtraction (off-by-window, reading the wrong
+    /// packed field) would only surface as a keeper that wastes gas or never
+    /// fires. Value AND transition pinned: pending grows with the journal,
+    /// drops to 0 on anchor, grows again in the next window.
+    function test_pendingLeavesTracksTheCursor() public {
+        ArticleAnchor hub = _deployHub();
+        _seedBatch(hub, 10);
+        assertEq(hub.pendingLeaves(), 10, "seeded journal is fully pending");
+
+        hub.anchorNextBatch();
+        assertEq(hub.pendingLeaves(), 0, "anchored window leaves nothing pending");
+
+        _seedBatch(hub, 3); // next window re-opened, below MIN_BATCH
+        assertEq(hub.pendingLeaves(), 3, "next window's partial batch is pending");
+    }
 }

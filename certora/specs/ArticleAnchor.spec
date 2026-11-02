@@ -206,6 +206,31 @@ rule initializeNeverTouchesGatewayAt(env e, address o, address r, uint64 c)
         "INV-2 · initialize does not write gatewayAt";
 }
 
+/// INV-2 · Owner-only writes (the parametric half for `gatewayAt`): NO entry
+/// point other than `setGateway` (owner-gated above) may change the mapping —
+/// `initialize` is deliberately NOT filtered out of this rule, because it
+/// never writes the mapping (its dedicated rule above proves that for the
+/// uninitialized hub; here the parametric sweep covers it in every state).
+/// This is the symmetry the adversarial re-review asked for: `router` gained
+/// setter + parametric rules, while `gatewayAt` — the mapping INV-2's
+/// predicate leads with — had only the single-setter rule, so a hypothetical
+/// second writer inside any other method would have passed silently.
+rule gatewayWrittenOnlyBySetGateway(env e, method f, calldataarg args)
+    filtered {
+        f -> f.selector != sig:setGateway(uint64,address).selector
+          && f.selector != sig:upgradeToAndCall(address,bytes).selector
+    }
+{
+    require hub.owner() != 0; // initialized hub (an uninitialized impl is out of scope)
+    uint64 c;
+    address g = hub.gatewayAt(c);
+
+    hub.f(e, args);
+
+    assert hub.gatewayAt(c) == g,
+        "INV-2 · Owner-only writes: gatewayAt changes only through setGateway";
+}
+
 // ===========================================================================
 // INV-3 — Anchor: roots derived from the journal, frozen forever
 // ===========================================================================

@@ -23,7 +23,7 @@ end-to-end test all run through `forge`/`cast`. There is no JS/TS/npm anywhere
 git clone <this-repo> && cd <this-repo>
 forge soldeer install        # forge-std 1.17.0 + solady 0.1.26, from soldeer.lock
 forge build
-forge test                   # 77 tests, 8 suites
+forge test                   # 79 tests, 9 suites
 forge snapshot               # regenerates .gas-snapshot
 bash script/e2e-anvil.sh     # live end-to-end on anvil: submit → anchor
 ```
@@ -191,7 +191,7 @@ affordable where per-article onchain storage would not be.
 
 ## Attack matrix ↔ tests
 
-77 tests in 8 suites. `forge test` is the gate; `.gas-snapshot` pins costs,
+79 tests in 9 suites. `forge test` is the gate; `.gas-snapshot` pins costs,
 enforced by `forge snapshot --check` in CI.
 
 | # | Threat | Defense | Test(s) |
@@ -320,7 +320,11 @@ mapping took its old selector pin away), with `gatewayAt`'s
 mapping base at slot 1, while the gateway still packs
 `router` + `baseChainSelector` into its base word because `submitArticle`
 reads both. This is breaking for a proxy deployed at the old
-linear slots; no such deployment exists for either namespace (the gateway's
+linear slots, and likewise for any proxy initialized before the batch-trio
+packing (the trio folded into one word, `rootAt` shifted 7 → 6 — an upgrade
+across that boundary reads a zeroed cursor and orphaned roots, see the
+`IArticleAnchor.Storage` slot-5 note); no such deployment exists for either
+namespace or either layout (the gateway's
 notary-era layout never shipped a proxy either), and there is deliberately no
 dual-read migration.
 The namespace state is readable on chain only THROUGH the contract that owns
@@ -411,9 +415,13 @@ Mitigations in place, all tested, and each applies to **every** contract:
   `test_gatewayInitializeTwiceReverts`). The body still rejects
   `initialOwner = address(0)` through `__Ownable_init`
   (`OwnableInvalidOwner(address(0))`) (`test_initializeRejectsZeroOwner`,
-  `test_gatewayInitializeRejectsZeroOwner`). **Storage survives upgrades**
+  `test_gatewayInitializeRejectsZeroOwner`). **Storage survives upgrades
+  *within a layout version***
   (`test_journalPreservedAcrossUpgrade`,
-  `test_gatewayConfigPreservedAcrossUpgrade`).
+  `test_gatewayConfigPreservedAcrossUpgrade`) — a layout-BREAKING change
+  (the ERC-7201 repack, the batch-trio packing) resets state across that
+  boundary instead and is flagged as breaking where the layout is documented
+  (`IArticleAnchor.Storage`); no pre-packing proxy exists to break.
   No base `__X_init()` is called, and none exists to call: `UUPSUpgradeable`
   is flagged `@custom:stateless` (no storage, no init function — it does not
   even extend `Initializable`, which is why the hub inherits it explicitly),

@@ -227,10 +227,19 @@ contract UpgradeTest is ArticleTestBase {
         assertEq(word & type(uint64).max, hub.batchOpenedAt(), "batchOpenedAt: low 64 bits of base+5");
         assertEq((word >> 64) & type(uint128).max, hub.lastAnchoredIndex(), "lastAnchoredIndex: bits 64..192 of base+5");
         assertEq((word >> 192) & type(uint64).max, hub.anchoredBatches(), "anchoredBatches: bits 192..256 of base+5");
+        // base+6 is the LIVE rootAt mapping base now (what retired there is the
+        // old `lastAnchoredIndex` home); a mapping's base stores nothing itself.
+        assertEq(uint256(vm.load(address(hub), bytes32(base + 6))), 0, "base+6: mapping base itself stores nothing");
+        assertEq(uint256(vm.load(address(hub), bytes32(base + 8))), 0, "base+8 retired (old anchoredBatches home)");
+        // Absolute pin for rootAt: its VALUES must live at keccak256(0, base+6).
+        // The two empty-slot assertions above would still pass if a future field
+        // INSERTED before rootAt shifted it to slot 7 — this one would not: the
+        // value would move to keccak256(0, base+7) and the load here read 0.
         assertEq(
-            uint256(vm.load(address(hub), bytes32(base + 6))), 0, "base+6 retired (rootAt mapping base stores nothing)"
+            uint256(vm.load(address(hub), keccak256(abi.encode(uint256(0), bytes32(base + 6))))),
+            uint256(hub.rootAt(0)),
+            "rootAt[0] must live at keccak256(0, base+6)"
         );
-        assertEq(uint256(vm.load(address(hub), bytes32(base + 8))), 0, "base+8 retired");
     }
 
     // ------------------------------------------------------------------

@@ -23,6 +23,11 @@ jobs:
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
+        with:
+          # Pinned: the pipeline now includes `forge snapshot --check`, which
+          # compares gas codegen — a toolchain bump can change generated gas
+          # and turn the pipeline red for a reason unrelated to this code.
+          version: v1.5.1
 
       - name: Show Forge version
         run: forge --version

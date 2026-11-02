@@ -44,9 +44,9 @@ Pinned by `test_validSubmitAppendsJournal`, `test_rangeFreezeAfterAppend`,
 **Statement.** A CCIP delivery may extend the journal only if it arrives
 through the configured router and, at that moment,
 `gatewayAt[message.sourceChainSelector] != 0` **and**
-`message.sender == gatewayAt[that chain]`. `gatewayAt` cells are written only
-by the current owner. A chain absent from the mapping (never registered or
-revoked to `0`) can never journal anything, from any sender.
+`message.sender == gatewayAt[that chain]`. `gatewayAt` cells and `router`
+are written only by the current owner. A chain absent from the mapping
+(never registered or revoked to `0`) can never journal anything, from any sender.
 
 **Predicate.**
 
@@ -77,7 +77,10 @@ Pinned by `test_whitelistedSourceSubmits`, `test_wrongChainSelectorReverts`,
 `test_wrongSenderReverts`, `test_revokedChainReverts`,
 `test_secondChainGatewayAccepted`, `test_crossChainSenderRejected`,
 `test_setGatewayOnlyOwner`, `test_setRouterOnlyOwner`,
-`test_routerRotationRewiresTheLane`.
+`test_routerRotationRewiresTheLane`; CVL rules `setGatewayOnlyOwner`,
+`setRouterOnlyOwner`, `initializeNeverTouchesGatewayAt` and the parametric
+`gatewayWrittenOnlyBySetGateway` / `routerWrittenOnlyByInitializeOrSetRouter`
+(the parametric halves: no *other* entry point writes either field).
 
 ---
 
@@ -121,7 +124,9 @@ Pinned by `test_permissionlessAnchor`, `test_anchorRequiresMinOrDeadline`,
 `test_anchorAtMaxBatch`, `test_emptyAnchorReverts`,
 `test_rangeFreezeAfterAppend`, `test_verifyAgainstBatchTrue`,
 `test_verifyAgainstBatchFalse`, `test_crossBatchProofsBoundToTheirOwnRoot`,
-`test_storageLivesAtErc7201Slot`.
+`test_pendingLeavesTracksTheCursor` (the cursor read back by the keeper's
+poll), `test_batchScalarsPackIntoOneSlot` (packed cursor word + `rootAt`'s
+absolute slot), `test_storageLivesAtErc7201Slot`.
 
 ---
 

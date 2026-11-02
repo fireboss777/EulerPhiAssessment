@@ -67,7 +67,10 @@ library ArticleLib {
     /// same way `hashStruct` is (`forge lint: asm-keccak256`): the payload is
     /// seven contiguous words, so the digest is one fixed 224-byte copy straight
     /// to keccak — no encoder, no intermediate buffer, and byte-for-byte the
-    /// digest the encoder produced. Two entry points because Solidity refuses to
+    /// digest the encoder produced for every CANONICAL payload encoding: a
+    /// non-canonical calldata word (dirty upper bits) is masked/rejected by
+    /// `abi.encode` downstream and never reaches either digest, so the accept/
+    /// reject sets are identical on both lanes. Two entry points because Solidity refuses to
     /// overload on data location alone (error 9582): `payloadLeaf` reads memory
     /// (the hub's `_submit` — `ccipReceive` decodes there), `payloadLeafCalldata`
     /// reads calldata (the gateway's paid lane pays no copy at all). ONE
