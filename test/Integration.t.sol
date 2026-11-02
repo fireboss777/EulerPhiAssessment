@@ -29,10 +29,8 @@ contract IntegrationTest is ArticleTestBase {
     function test_fullLifecycle_deployWireSubmitAnchor() public {
         // 1. Deploy the hub through its script — params, no env vars.
         MockRouter dstRouter = new MockRouter(); // hub side ("chain B")
-        address hubAddr = new DeployHub().run(address(this), address(dstRouter));
-        ArticleAnchor hub = ArticleAnchor(hubAddr);
-        assertEq(hub.owner(), address(this), "hub wiring: owner from params");
-        assertEq(hub.router(), address(dstRouter), "hub wiring: router from params");
+        ArticleAnchor hub = _hubViaScript(dstRouter);
+        address hubAddr = address(hub);
 
         // 2. Deploy the gateway through its script — uint64 selector is typed,
         //    so a wrong-but-plausible selector cannot be expressed at all.
@@ -88,5 +86,33 @@ contract IntegrationTest is ArticleTestBase {
             hub.verifyAgainstBatch(0, leaf, MerkleTreeLib.leafProof(tree, 0)),
             "published proof verifies against the frozen root"
         );
+    }
+
+    /// @dev The keeper's OTHER branch — before the window elapses it must
+    /// DECLINE (no-op), not call `anchorNextBatch` and revert BatchNotReady.
+    /// The lifecycle test only walks the post-deadline path, so without this
+    /// one the readiness gate in `Anchor.run` had no pin at all: a mutation
+    /// setting `ready = true` stayed green (mutation-proven).
+    function test_keeperNoOpsBeforeTheWindow() public {
+        ArticleAnchor hub = _hubViaScript(new MockRouter());
+        _submitAs(hub, _payloadFor(vm.addr(AUTHOR_KEY), 1), AUTHOR_KEY); // 1 leaf, window open, deadline far
+        assertEq(hub.anchoredBatches(), 0, "nothing anchored yet");
+        assertEq(hub.pendingLeaves(), 1, "one leaf pending");
+
+        new Anchor().run(address(hub)); // not ready: must return, not revert
+        assertEq(hub.anchoredBatches(), 0, "no-op before the deadline");
+        assertEq(hub.pendingLeaves(), 1, "journal untouched by the decline");
+
+        vm.warp(block.timestamp + ArticleLib.BATCH_DEADLINE + 1);
+        new Anchor().run(address(hub));
+        assertEq(hub.anchoredBatches(), 1, "anchors once the window elapses");
+        assertEq(hub.pendingLeaves(), 0, "window consumed");
+    }
+
+    /// @dev Hub deployed through the real script, wiring asserted once here.
+    function _hubViaScript(MockRouter router) internal returns (ArticleAnchor hub) {
+        hub = ArticleAnchor(new DeployHub().run(address(this), address(router)));
+        assertEq(hub.owner(), address(this), "hub wiring: owner from params");
+        assertEq(hub.router(), address(router), "hub wiring: router from params");
     }
 }

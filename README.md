@@ -23,7 +23,7 @@ end-to-end test all run through `forge`/`cast`. There is no JS/TS/npm anywhere
 git clone <this-repo> && cd <this-repo>
 forge soldeer install        # forge-std 1.17.0 + solady 0.1.26, from soldeer.lock
 forge build
-forge test                   # 79 tests, 9 suites
+forge test                   # 80 tests, 9 suites
 forge test --match-contract IntegrationTest   # end-to-end: scripts → lane → cross-chain → keeper
 forge snapshot               # regenerates .gas-snapshot
 ```
@@ -191,7 +191,7 @@ affordable where per-article onchain storage would not be.
 
 ## Attack matrix ↔ tests
 
-79 tests in 9 suites. `forge test` is the gate; `.gas-snapshot` pins costs,
+80 tests in 9 suites. `forge test` is the gate; `.gas-snapshot` pins costs,
 enforced by `forge snapshot --check` in CI.
 
 | # | Threat | Defense | Test(s) |
