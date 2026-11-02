@@ -97,10 +97,17 @@ contract ArticleAnchor is
         uint256 end = start + count;
         root = _buildRoot(start, end);
 
-        uint256 batchIndex = $.anchoredBatches;
+        uint64 batchIndex = $.anchoredBatches;
         $.rootAt[batchIndex] = root;
-        $.anchoredBatches = batchIndex + 1;
-        $.lastAnchoredIndex = end;
+        $.anchoredBatches = batchIndex + 1; // uint64 checked arithmetic reverts on wrap
+        // Advance the cursor with a CHECKED uint128 addition: if it would pass
+        // 2^128 the transaction reverts instead of truncating. A narrowing cast
+        // of `start + count` was exactly the Certora counterexample for
+        // `anchorAdvancesTheCursorOnce` (INV-3): a raw-harness cursor near
+        // 2^128 plus MAX_BATCH wrapped to ~199 and moved the cursor BACKWARD.
+        // `count` itself is clamped to MAX_BATCH (200) by the ternary above.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        $.lastAnchoredIndex = $.lastAnchoredIndex + uint128(count);
 
         emit RootAnchored(batchIndex, root, start, end);
     }
@@ -142,7 +149,7 @@ contract ArticleAnchor is
     function _submit(bytes32 leafDigest, bytes memory sig, ArticleSubmission memory payload) internal {
         Storage storage $ = ArticleLib.getStorage();
         require(block.timestamp <= payload.deadline, Expired());
-        require(keccak256(abi.encode(payload)) == leafDigest, DigestMismatch());
+        require(ArticleLib.payloadLeaf(payload) == leafDigest, DigestMismatch());
         // Canonical 65-byte (r, s, v) only; low-s enforced (Solady's recover
         // deliberately accepts malleable s, so the gate lives here).
         require(sig.length == 65, InvalidSignatureLength());
@@ -159,7 +166,9 @@ contract ArticleAnchor is
         $.usedUuid[payload.author][payload.uuid] = true;
         $.lastSubmit[payload.author] = block.timestamp;
         // First leaf of a fresh batch window opens (and re-opens) the deadline.
-        if ($.journal.length == $.lastAnchoredIndex) $.batchOpenedAt = block.timestamp;
+        // forge-lint: disable-next-line(unsafe-typecast) — block.timestamp cannot
+        // exceed uint64 before the year 584 billion (the field doc records this).
+        if ($.journal.length == $.lastAnchoredIndex) $.batchOpenedAt = uint64(block.timestamp);
         $.journal.push(leafDigest);
 
         emit Submitted(payload.author, msg.sender, leafDigest);
@@ -178,8 +187,16 @@ contract ArticleAnchor is
         Storage storage $ = ArticleLib.getStorage();
         uint256 n = end - start;
         bytes32[] memory leaves = new bytes32[](n);
-        for (uint256 i; i < n; ++i) {
-            leaves[i] = $.journal[start + i];
+        // Both guards are dead by construction: `i < n` keeps `++i` at ≤ n (no
+        // wrap — an array of 2^256 words cannot exist, `new bytes32[](n)` would
+        // not have returned), and `start + i` < start + n = end ≤ journal.length,
+        // itself reached through checked arithmetic. The memory-array BOUNDS
+        // check on `leaves[i]` is not an overflow check and is NOT skipped by
+        // `unchecked` — it stays.
+        unchecked {
+            for (uint256 i; i < n; ++i) {
+                leaves[i] = $.journal[start + i];
+            }
         }
         return MerkleTreeLib.root(MerkleTreeLib.build(leaves));
     }

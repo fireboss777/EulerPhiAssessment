@@ -42,6 +42,23 @@ contract ArticleLibTest is Test {
         assertEq(ArticleLib.hashStruct(_pinnedPayload()), HASHSTRUCT_PIN, "struct hash drifted");
     }
 
+    /// @dev The leaf digest must be byte-identical to `keccak256(abi.encode(payload))`
+    /// for ARBITRARY payloads: `ArticleLib.payloadLeaf` replaces the encoder at both
+    /// lanes (hub reads memory, gateway reads calldata — Solidity refuses an overload
+    /// differing only by data location, hence two entry points, one semantics). The
+    /// reference is the encoder itself, an implementation-independent path.
+    function test_payloadLeafMatchesAbiEncode(IArticleAnchor.ArticleSubmission memory payload) public pure {
+        assertEq(ArticleLib.payloadLeaf(payload), keccak256(abi.encode(payload)), "memory leaf drifted from abi.encode");
+    }
+
+    function test_payloadLeafCalldataMatchesAbiEncode(IArticleAnchor.ArticleSubmission calldata payload) public pure {
+        assertEq(
+            ArticleLib.payloadLeafCalldata(payload),
+            keccak256(abi.encode(payload)),
+            "calldata leaf drifted from abi.encode"
+        );
+    }
+
     function _pinnedPayload() internal pure returns (IArticleAnchor.ArticleSubmission memory) {
         return IArticleAnchor.ArticleSubmission({
             author: AUTHOR,

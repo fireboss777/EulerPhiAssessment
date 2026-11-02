@@ -6,6 +6,7 @@ import { Client } from "./interfaces/Client.sol";
 import { IArticleAnchor } from "./interfaces/IArticleAnchor.sol";
 import { IRouterClient } from "./interfaces/IRouterClient.sol";
 import { ISubmissionGateway } from "./interfaces/ISubmissionGateway.sol";
+import { ArticleLib } from "./libraries/ArticleLib.sol";
 import { GatewayLib } from "./libraries/GatewayLib.sol";
 import { Ownable2StepUpgradeable } from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -65,7 +66,7 @@ contract SubmissionGateway is
     {
         // Cheap, chain-agnostic sanity checks before any fee moves:
         require(block.timestamp <= payload.deadline, Expired());
-        require(keccak256(abi.encode(payload)) == leafDigest, DigestMismatch());
+        require(ArticleLib.payloadLeafCalldata(payload) == leafDigest, DigestMismatch());
 
         Storage storage $ = GatewayLib.getStorage();
         Client.EVM2AnyMessage memory m = Client.EVM2AnyMessage({

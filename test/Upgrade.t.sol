@@ -187,6 +187,34 @@ contract UpgradeTest is ArticleTestBase {
         );
     }
 
+    /// @dev Packing proof — the hub side of the symmetry the gateway already
+    /// has at its base word (router+selector share one slot, asserted above).
+    /// The batch trio `batchOpenedAt` (uint64) + `lastAnchoredIndex` (uint128)
+    /// + `anchoredBatches` (uint64) = 256 bits exactly must live in ONE word at
+    /// `base + 5`, in that order, and the retired per-field homes (`base + 6`,
+    /// `base + 8`) must read empty. Read raw on purpose: the getters widen
+    /// back to uint256 by design, so they cannot tell a packed layout from a
+    /// spread one — only the slot contents can.
+    function test_batchScalarsPackIntoOneSlot() public {
+        ArticleAnchor hub = _deployHub();
+        _seedBatch(hub, 10);
+        hub.anchorNextBatch();
+
+        // The namespace ROOT slot IS struct slot 0, so absolute field slots are
+        // STORAGE_SLOT + i (the existing ERC-7201 test's `base` is the VALUE
+        // stored in slot 0, i.e. the router — not an address to index by).
+        uint256 base = uint256(ArticleLib.STORAGE_SLOT);
+        uint256 word = uint256(vm.load(address(hub), bytes32(base + 5)));
+
+        assertEq(word & type(uint64).max, hub.batchOpenedAt(), "batchOpenedAt: low 64 bits of base+5");
+        assertEq((word >> 64) & type(uint128).max, hub.lastAnchoredIndex(), "lastAnchoredIndex: bits 64..192 of base+5");
+        assertEq((word >> 192) & type(uint64).max, hub.anchoredBatches(), "anchoredBatches: bits 192..256 of base+5");
+        assertEq(
+            uint256(vm.load(address(hub), bytes32(base + 6))), 0, "base+6 retired (rootAt mapping base stores nothing)"
+        );
+        assertEq(uint256(vm.load(address(hub), bytes32(base + 8))), 0, "base+8 retired");
+    }
+
     // ------------------------------------------------------------------
     // Gateway: the same guarantees on the gateway contract — each test mirrors
     // the hub test of the same name above, with SubmissionGateway swapped in.

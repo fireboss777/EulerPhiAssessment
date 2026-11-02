@@ -63,6 +63,54 @@ library ArticleLib {
         }
     }
 
+    /// @dev The journal leaf — `keccak256(abi.encode(payload))` hand-rolled the
+    /// same way `hashStruct` is (`forge lint: asm-keccak256`): the payload is
+    /// seven contiguous words, so the digest is one fixed 224-byte copy straight
+    /// to keccak — no encoder, no intermediate buffer, and byte-for-byte the
+    /// digest the encoder produced. Two entry points because Solidity refuses to
+    /// overload on data location alone (error 9582): `payloadLeaf` reads memory
+    /// (the hub's `_submit` — `ccipReceive` decodes there), `payloadLeafCalldata`
+    /// reads calldata (the gateway's paid lane pays no copy at all). ONE
+    /// semantics, pinned against the encoder itself by
+    /// `test_payloadLeafMatchesAbiEncode` and
+    /// `test_payloadLeafCalldataMatchesAbiEncode`. The free-memory region is
+    /// used as scratch and NOT bumped, exactly as `hashStruct` above does it.
+    function payloadLeaf(IArticleAnchor.ArticleSubmission memory payload) internal pure returns (bytes32 result) {
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, mload(payload))
+            mstore(add(ptr, 0x20), mload(add(payload, 0x20)))
+            mstore(add(ptr, 0x40), mload(add(payload, 0x40)))
+            mstore(add(ptr, 0x60), mload(add(payload, 0x60)))
+            mstore(add(ptr, 0x80), mload(add(payload, 0x80)))
+            mstore(add(ptr, 0xa0), mload(add(payload, 0xa0)))
+            mstore(add(ptr, 0xc0), mload(add(payload, 0xc0)))
+            result := keccak256(ptr, 0xe0)
+        }
+    }
+
+    /// @dev Calldata twin of `payloadLeaf` (see its doc): the struct is static —
+    /// seven contiguous words — so the digest reads them straight out of calldata.
+    /// A static calldata struct has no `.offset` suffix (solc error 3622); the
+    /// variable itself evaluates to its calldata offset inside assembly.
+    function payloadLeafCalldata(IArticleAnchor.ArticleSubmission calldata payload)
+        internal
+        pure
+        returns (bytes32 result)
+    {
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, calldataload(payload))
+            mstore(add(ptr, 0x20), calldataload(add(payload, 0x20)))
+            mstore(add(ptr, 0x40), calldataload(add(payload, 0x40)))
+            mstore(add(ptr, 0x60), calldataload(add(payload, 0x60)))
+            mstore(add(ptr, 0x80), calldataload(add(payload, 0x80)))
+            mstore(add(ptr, 0xa0), calldataload(add(payload, 0xa0)))
+            mstore(add(ptr, 0xc0), calldataload(add(payload, 0xc0)))
+            result := keccak256(ptr, 0xe0)
+        }
+    }
+
     /// @dev The hub's namespace pointer: every state read and write in
     /// `ArticleAnchor` and `ArticleAnchorGetters` goes through it. A library
     /// function cannot be `virtual` — and does not need to be, since the slot

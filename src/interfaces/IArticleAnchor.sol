@@ -59,14 +59,21 @@ interface IArticleAnchor {
         mapping(address => mapping(bytes32 => bool)) usedUuid;
         /// @dev Slot 4.
         mapping(address => uint256) lastSubmit;
-        /// @dev Slot 5.
-        uint256 batchOpenedAt;
-        /// @dev Slot 6.
-        uint256 lastAnchoredIndex;
-        /// @dev Slot 7 — mapping base; value at `keccak256(abi.encode(uint256(batchIndex), baseSlot))`.
+        /// @dev Slot 5 — the batch trio packed into ONE word (256 bits exactly),
+        /// declaration order = ascending byte order, mirroring how the gateway
+        /// packs `router`+`baseChainSelector` at its own base:
+        /// `batchOpenedAt` bits 0..64 (uint64 — a timestamp, uint64 holds
+        /// absolute time until the year 584 billion), `lastAnchoredIndex`
+        /// bits 64..192 (uint128 — bounds any reachable journal, whose length
+        /// is paid at ≥21k gas per element), `anchoredBatches` bits 192..256
+        /// (uint64). Readers widen back to `uint256`, so the getters' ABI is
+        /// unchanged. Pinned by `test_batchScalarsPackIntoOneSlot`, which
+        /// reads the raw word — a widening getter cannot see the layout.
+        uint64 batchOpenedAt;
+        uint128 lastAnchoredIndex;
+        uint64 anchoredBatches;
+        /// @dev Slot 6 — mapping base; value at `keccak256(abi.encode(uint256(batchIndex), baseSlot))`.
         mapping(uint256 => bytes32) rootAt;
-        /// @dev Slot 8.
-        uint256 anchoredBatches;
     }
 
     /// @notice The universal article envelope: what a writer signs (EIP-712 struct)

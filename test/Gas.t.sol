@@ -47,7 +47,9 @@ contract GasTest is ArticleTestBase {
         console.log("anchor (10 leaves)        ", anchor10);
         console.log("anchor (200 leaves)       ", anchor200);
         assertLt(anchor10, 175_000, "anchor(10) cost drifted up");
-        assertLt(anchor200, 950_000, "anchor(200) cost drifted up");
+        // Tightened for the unchecked copy loop (TDD red/green): a first anchor
+        // measured 613_311 with checked increments and 577_511 unchecked.
+        assertLt(anchor200, 608_000, "anchor(200) cost drifted up");
     }
 
     function test_gasVerify() public {
