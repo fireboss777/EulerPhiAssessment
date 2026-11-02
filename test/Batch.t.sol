@@ -97,4 +97,65 @@ contract BatchTest is ArticleTestBase {
         assertFalse(hub.verifyAgainstBatch(0, bytes32(uint256(leaf) ^ 1), proof), "forged leaf");
         assertFalse(hub.verifyAgainstBatch(1, leaf, proof), "leaf cannot cross batches");
     }
+
+    /// @dev The 6h window pinned by VALUE and by an absolute clock. The rest of
+    /// the suite warps relative to a base at t=7,201s — below BATCH_DEADLINE —
+    /// so deleting the `batchOpenedAt` write left every one of them green while
+    /// the policy died for any real chain (unix time ≫ 6h): a fresh partial
+    /// batch would be anchorable by anyone instantly. This test seeds at
+    /// absolute t = 2 days, asserts the recorded open time, checks the deadline
+    /// is measured from OPEN (not from the raw epoch), and checks re-opening.
+    function test_batchWindowRecordsOpensAndGates() public {
+        ArticleAnchor hub = _deployHub();
+        vm.warp(2 days); // absolute clock far past the raw 6h number
+        uint256 openedAt = block.timestamp;
+        _seedBatch(hub, 9); // 9 < MIN_BATCH: the deadline is the only way out
+
+        assertEq(hub.batchOpenedAt(), openedAt, "first leaf of a fresh window records batchOpenedAt");
+
+        // Inside the window measured from OPEN, even though the absolute time
+        // already exceeds the raw BATCH_DEADLINE constant.
+        vm.warp(openedAt + ArticleLib.BATCH_DEADLINE - 1);
+        vm.expectRevert(IArticleAnchor.BatchNotReady.selector);
+        hub.anchorNextBatch();
+
+        // ...and anchorable exactly at open + deadline.
+        vm.warp(openedAt + ArticleLib.BATCH_DEADLINE);
+        hub.anchorNextBatch();
+        assertEq(hub.lastAnchoredIndex(), 9, "partial batch anchored on the window deadline");
+        assertEq(hub.anchoredBatches(), 1, "one batch");
+
+        // The next leaf after a fully-consumed window re-opens a fresh one.
+        uint256 reopenedAt = openedAt + ArticleLib.BATCH_DEADLINE + 100;
+        vm.warp(reopenedAt);
+        _seedBatch(hub, 1);
+        assertEq(hub.batchOpenedAt(), reopenedAt, "fresh window re-opens the deadline");
+    }
+
+    /// @dev The cross-batch leg deserves a REAL second root:
+    /// `test_verifyAgainstBatchFalse` checks it against `rootAt[1] == 0` (batch 1
+    /// never anchored there), which only proves "not against an empty slot".
+    /// Two anchored batches prove the property itself: a proof is bound to its
+    /// OWN batch's root, in both crossing directions, against two distinct,
+    /// non-zero roots.
+    function test_crossBatchProofsBoundToTheirOwnRoot() public {
+        ArticleAnchor hub = _deployHub();
+        _seedBatch(hub, 10);
+        hub.anchorNextBatch();
+        _seedBatch(hub, 10); // fresh window re-opened by the 11th leaf
+        hub.anchorNextBatch(); // 10 pending >= MIN_BATCH: no deadline needed
+
+        assertEq(hub.anchoredBatches(), 2, "two real batches");
+        assertTrue(hub.rootAt(0) != hub.rootAt(1), "the two roots genuinely differ");
+
+        bytes32[] memory tree0 = MerkleTreeLib.build(_sliceJournal(hub, 0, 10));
+        bytes32[] memory tree1 = MerkleTreeLib.build(_sliceJournal(hub, 10, 20));
+        bytes32 leaf0 = hub.journal(2);
+        bytes32 leaf1 = hub.journal(15);
+
+        assertTrue(hub.verifyAgainstBatch(0, leaf0, MerkleTreeLib.leafProof(tree0, 2)), "batch0 proof on batch0");
+        assertTrue(hub.verifyAgainstBatch(1, leaf1, MerkleTreeLib.leafProof(tree1, 5)), "batch1 proof on batch1");
+        assertFalse(hub.verifyAgainstBatch(0, leaf1, MerkleTreeLib.leafProof(tree1, 5)), "batch1 proof vs batch0 root");
+        assertFalse(hub.verifyAgainstBatch(1, leaf0, MerkleTreeLib.leafProof(tree0, 2)), "batch0 proof vs batch1 root");
+    }
 }

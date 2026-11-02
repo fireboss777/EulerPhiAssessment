@@ -7,6 +7,7 @@ import { Client } from "../src/interfaces/Client.sol";
 import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
 import { ISubmissionGateway } from "../src/interfaces/ISubmissionGateway.sol";
 import { MockRouter } from "./mocks/MockRouter.sol";
+import { RejectingSubmitter } from "./mocks/RejectingSubmitter.sol";
 import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
 
 contract GatewayTest is ArticleTestBase {
@@ -72,6 +73,32 @@ contract GatewayTest is ArticleTestBase {
         assertEq(address(gw).balance, 0, "gateway retains nothing");
         assertEq(mock.lastValue(), mock.fee(), "router got the fee, not the excess");
         assertEq(address(this).balance, 1 ether - mock.fee(), "excess came back (gas excluded)");
+    }
+
+    /// @dev The deadline is the paid lane's FIRST gate, and it must fail closed
+    /// before any fee moves — Foundry had no test for this side (only CVL's
+    /// `expiredSubmissionsFailClosed` covered it). The warp puts the payload's
+    /// deadline in the past; value 0 is enough because the gate precedes the
+    /// quote.
+    function test_gatewayExpiredDeadlineReverts() public {
+        (IArticleAnchor.ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
+        vm.warp(p.deadline + 1);
+
+        vm.expectRevert(ISubmissionGateway.Expired.selector);
+        gw.submitArticle{ value: 0 }(_leafOf(p), sig, p);
+    }
+
+    /// @dev `RefundFailed` is reachable ONLY through a caller that refuses ETH —
+    /// EOAs and the test base both accept transfers, so this revert path had no
+    /// test at all. The relayer forwards its whole value, the router takes the
+    /// fee, and the excess comes back to a contract with no `receive()`: the
+    /// submission must revert rather than strand the excess silently.
+    function test_refundToRejectingCallerReverts() public {
+        (IArticleAnchor.ArticleSubmission memory p, bytes memory sig) = _payloadAndSig();
+        RejectingSubmitter relayer = new RejectingSubmitter();
+
+        vm.expectRevert(ISubmissionGateway.RefundFailed.selector);
+        relayer.submit{ value: 0.03 ether }(gw, _leafOf(p), sig, p);
     }
 
     // ------------------------------------------------------------------

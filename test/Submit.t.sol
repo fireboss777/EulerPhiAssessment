@@ -3,7 +3,7 @@ pragma solidity ^0.8.27;
 
 import { ArticleAnchor } from "../src/ArticleAnchor.sol";
 import { IArticleAnchor } from "../src/interfaces/IArticleAnchor.sol";
-import { ArticleTestBase } from "./utils/ArticleTestBase.sol";
+import { ArticleTestBase, IEIP5267 } from "./utils/ArticleTestBase.sol";
 import { ECDSA } from "solady/utils/ECDSA.sol";
 
 contract SubmitTest is ArticleTestBase {
@@ -114,6 +114,54 @@ contract SubmitTest is ArticleTestBase {
 
         vm.expectRevert(IArticleAnchor.NotAuthor.selector);
         hub.submitArticle(_leafOf(p), forged, p);
+    }
+
+    /// @dev The 65-byte gate is API, not decoration: Solady's `recover`
+    /// explicitly dispatches on a 64-byte EIP-2098 compact input (its header
+    /// also declines to check malleability — the reason the low-s gate exists),
+    /// so without this `require` the hub would silently start accepting a
+    /// second signature format, and the s-extraction that follows reads the
+    /// packed `vs` word as if it were `s`. The whole suite stayed green under
+    /// exactly that mutation — this is the test that closes it: too short
+    /// (64 = the compact form Solady WOULD take), too long (66), and the
+    /// canonical 65 still landing, so the gate is about length alone.
+    function test_signatureLengthGateRejectsNon65() public {
+        ArticleAnchor hub = _deployHub();
+        IArticleAnchor.ArticleSubmission memory p = _payloadFor(vm.addr(AUTHOR_KEY), 30);
+        bytes memory sig65 = _signArticle(hub, p, AUTHOR_KEY);
+        bytes32 leaf = _leafOf(p);
+        assertEq(sig65.length, 65, "fixture signature is canonical");
+
+        bytes memory compact64 = new bytes(64);
+        for (uint256 i; i < 64; ++i) {
+            compact64[i] = sig65[i]; // r (32) || s (32): EIP-2098's shape
+        }
+        vm.expectRevert(IArticleAnchor.InvalidSignatureLength.selector);
+        hub.submitArticle(leaf, compact64, p);
+
+        bytes memory long66 = new bytes(66);
+        for (uint256 i; i < 66; ++i) {
+            long66[i] = i < sig65.length ? sig65[i] : bytes1(0);
+        }
+        vm.expectRevert(IArticleAnchor.InvalidSignatureLength.selector);
+        hub.submitArticle(leaf, long66, p);
+
+        hub.submitArticle(leaf, sig65, p); // the gate is length, not content
+        assertEq(hub.journalLength(), 1, "canonical 65-byte signature accepted");
+    }
+
+    /// @dev The EIP-712 name and version are baked into every off-chain
+    /// signature. Every signing test derives the domain FROM the contract
+    /// (EIP-5267), so renaming `("EulerPhiArticle","1")` anywhere in the code
+    /// keeps the entire suite green while breaking every wallet, SDK and
+    /// indexer that hardcodes the domain. Pinned literally: the strings must
+    /// match the constants, not merely the contract's self-consistent answer.
+    function test_eip712DomainNameAndVersionPinned() public {
+        ArticleAnchor hub = _deployHub();
+        (, string memory name, string memory version,,,,) = IEIP5267(address(hub)).eip712Domain();
+
+        assertEq(name, "EulerPhiArticle", "EIP-712 name drifted");
+        assertEq(version, "1", "EIP-712 version drifted");
     }
 
     /// @dev EIP-712 domain binding: a payload signed for another verifying
