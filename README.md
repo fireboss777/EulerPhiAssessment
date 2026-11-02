@@ -104,6 +104,17 @@ hub-side revert. Check `lastSubmit[author] + RATE_LIMIT` and
 `usedUuid[author][uuid]` off-chain before paying for the paid lane; the direct
 L2 lane has no such downside (the revert only costs your own gas).
 
+**Mempool duplicate (paid lane — known behavior).** The gateway transaction
+carries the whole payload in its calldata, so a watcher can relay
+`leaf, sig, payload` directly to the hub *before* the CCIP delivery lands —
+transit takes minutes, the mempool takes seconds. The article still arrives,
+through the front-runner's transaction, but your delivery then reverts
+`DuplicateUuid` on the hub: the `Forwarded(leaf, messageId)` event ends with no
+successful delivery behind it while the fee is already spent. The off-chain
+`usedUuid` check above narrows this window but cannot close it — the race spans
+the entire CCIP transit. Only the fee is at risk (relaying costs the front-runner
+nothing and gains them nothing).
+
 `SubmissionGateway.submitArticle` is `payable` for exactly one reason: on the gateway's chain a
 transaction must also buy the cross-chain message. The fee is **Chainlink's,
 not ours** — the gateway forwards `fee` to the router, refunds any excess to

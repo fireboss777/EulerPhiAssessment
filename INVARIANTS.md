@@ -117,7 +117,8 @@ journaled.
 Pinned by `test_permissionlessAnchor`, `test_anchorRequiresMinOrDeadline`,
 `test_anchorAtMaxBatch`, `test_emptyAnchorReverts`,
 `test_rangeFreezeAfterAppend`, `test_verifyAgainstBatchTrue`,
-`test_verifyAgainstBatchFalse`, `test_storageLivesAtErc7201Slot`.
+`test_verifyAgainstBatchFalse`, `test_crossBatchProofsBoundToTheirOwnRoot`,
+`test_storageLivesAtErc7201Slot`.
 
 ---
 
@@ -157,7 +158,8 @@ Pinned by `test_genuineAuthorSigAccepted`,
 `test_payloadSignedForAnotherDomainReverts` (foreign chainId **and** foreign
 verifyingContract → `NotAuthor`), `test_forgedByAuthorSigReverts`,
 `test_digestMismatchReverts`, `test_expiredDeadlineReverts`,
-`test_lowSEnforced`, `test_hashStructIsPinned`.
+`test_lowSEnforced`, `test_signatureLengthGateRejectsNon65`,
+`test_eip712DomainNameAndVersionPinned`, `test_hashStructIsPinned`.
 
 ---
 
@@ -192,7 +194,7 @@ appearing to confirm — the journal would then hold content the source chain
 never attested. Violation = end-to-end integrity loss, not a mispriced hop.
 
 Pinned by `test_gatewayForwardsByteIdenticalCalldata`, `test_excessRefunded`,
-`test_gatewayPayloadLandsInHub`.
+`test_refundToRejectingCallerReverts`, `test_gatewayPayloadLandsInHub`.
 
 ---
 
@@ -222,9 +224,12 @@ Violation = an expired or forged envelope, or an unfunded caller, gets a
 message dispatched — the lane no longer distinguishes valid from invalid at
 its entry.
 
-Pinned by `test_gatewayDigestMismatchReverts`, `test_insufficientFeeReverts`
-(the deadline gate's gateway-side twin is covered by the CVL rule; the
-hub-side one is `test_expiredDeadlineReverts`).
+Pinned by `test_gatewayExpiredDeadlineReverts`,
+`test_gatewayDigestMismatchReverts`, `test_insufficientFeeReverts` — one
+Foundry test per gate now; the CVL rules `expiredSubmissionsFailClosed`,
+`digestMismatchFailsClosed` and `underpaymentFailsClosed` pin the same three
+predicates on the prover side (the hub-side deadline twin is
+`test_expiredDeadlineReverts`).
 
 ---
 
@@ -255,9 +260,10 @@ Pinned by `test_gatewayConfigPreservedAcrossUpgrade`,
 ## Deliberately not invariants
 
 - **Policy** — gas bounds, rate limits, uuid dedup, the fee *level* (what a
-  quote amounts to): real guarantees, but tunable rules layered on top. That
-  the gateway forwards exactly its quote and retains nothing is GW-1 — the
-  honesty of transit, not the price.
+  quote amounts to), the batch window (`MIN_BATCH` / `BATCH_DEADLINE`,
+  pinned by `test_batchWindowRecordsOpensAndGates`): real guarantees, but
+  tunable rules layered on top. That the gateway forwards exactly its quote
+  and retains nothing is GW-1 — the honesty of transit, not the price.
 - **Upgrade authority** — `_authorizeUpgrade` and setter gating are OZ
   `Ownable2StepUpgradeable`'s mechanically enforced behavior; restating them
   would duplicate what the framework already guarantees.

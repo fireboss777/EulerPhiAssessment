@@ -24,7 +24,16 @@ contract DeployGateway is Script {
         address owner = vm.envAddress("GW_OWNER");
         address router = vm.envAddress("GW_ROUTER");
         address hub = vm.envAddress("GW_HUB");
-        uint64 selector = uint64(vm.envUint("GW_BASE_CHAIN_SELECTOR"));
+        // Chain selectors are uint64 on both Chainlink's side and ours: a
+        // mistyped env var must fail HERE, not be silently truncated into a
+        // wrong-but-plausible selector that would deploy a lane routing to
+        // nowhere.
+        uint256 rawSelector = vm.envUint("GW_BASE_CHAIN_SELECTOR");
+        require(rawSelector <= type(uint64).max, "GW_BASE_CHAIN_SELECTOR does not fit uint64");
+        // casting to 'uint64' is safe because the require above proves
+        // rawSelector <= type(uint64).max — the exact check this lint asks for
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint64 selector = uint64(rawSelector);
 
         vm.startBroadcast();
         SubmissionGateway impl = new SubmissionGateway();

@@ -85,6 +85,10 @@ interface IArticleAnchor {
         bytes32 bodyHash;
         bytes32 cidHash;
         bytes32 uuid;
+        /// @notice Author-claimed publication time: part of the signed envelope,
+        /// NOT chain-verified — the hub never compares it to `block.timestamp`.
+        /// Readers that need chain-confirmed time must use the block of the
+        /// `Submitted` event instead.
         uint256 timestamp;
         uint256 deadline;
     }

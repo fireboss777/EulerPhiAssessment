@@ -39,3 +39,9 @@ jobs:
 
       - name: Run Forge tests
         run: forge test -vvv
+
+      # .gas-snapshot is the cost baseline the README table is derived from;
+      # without this step the snapshot silently drifts and the "pins costs"
+      # claim in the README is untrue.
+      - name: Check gas snapshot
+        run: forge snapshot --check
