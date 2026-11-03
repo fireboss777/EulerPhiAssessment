@@ -1,0 +1,7 @@
+# Certora CVL specs — GitHub's linguist has no "CVL" language entry and
+# misdetects *.spec as Ruby, inflating the repo's Ruby share (17.2%).
+# Linguist excludes unknown-language overrides from the stats, so the
+# specs stop counting as Ruby; if CVL is ever added upstream, they will
+# simply be classified as CVL automatically.
+certora/specs/*.spec linguist-language=CVL
+*.cvl linguist-language=CVL
